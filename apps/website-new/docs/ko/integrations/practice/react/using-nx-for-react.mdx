@@ -1,0 +1,172 @@
+import { Steps, Badge } from '@theme';
+
+# React에서 Nx CLI 사용하기
+
+이 가이드는 [Nx CLI](https://nx.dev)를 사용해 React 프로젝트에 Module Federation을 통합하는 방법을 설명합니다.
+
+## 설치
+
+  먼저 애플리케이션 개발에 사용할 새 Nx 워크스페이스를 만듭니다.
+
+  ```bash
+  npx -y create-nx-workspace@latest myorg --preset=apps
+  cd myorg
+  ```
+
+  다음으로 Nx 워크스페이스에서 React 기능을 사용할 수 있도록 `@nx/react` 플러그인을 추가합니다.
+
+  ```bash
+  npx nx add @nx/react
+  ```
+
+## Remotes와 함께 Shell (Host) 생성
+
+Shell (Host)는 Module Federation 통합에서 핵심 역할을 합니다. Nx는 Module Federation이 활성화된 애플리케이션 설정 과정을 단순하게 만들기 위해 [generator](https://nx.dev/features/generate-code#generate-code)를 제공합니다.
+대표적으로 [`host`](https://nx.dev/nx-api/react/generators/host)와 [`remote`](https://nx.dev/nx-api/react/generators/remote) generator를 사용할 수 있습니다.
+`host` generator에서는 `--remotes` 옵션을 지정할 수 있어, 필요한 remotes를 한 번의 명령으로 함께 생성할 수 있습니다.
+
+_<Badge text="참고:" type="info" /> <small>현재 Nx는 React에서 Rspack 기반 Module Federation 기능을 제공하기 위해 `@module-federation/enhanced/rspack`을 사용합니다.</small>_
+
+<Steps>
+  ### Shell (Host) 애플리케이션 스캐폴딩
+
+  `apps/` 디렉터리에 `shop`이라는 shell을 만들고, `products`, `cart`, `checkout` remotes를 함께 생성해 보겠습니다.
+
+  ```bash
+  npx nx g @nx/react:host apps/shop --remotes=products,cart,checkout
+  ```
+
+  `apps/` 디렉터리에 네 개의 애플리케이션이 생성된 것을 확인할 수 있습니다.
+  이 시점에는 필요한 파일 생성과 설정이 모두 완료되어 있습니다.
+
+  _<Badge text="참고:" type="info" /> <small>Nx는 shell과 remote 애플리케이션 사이의 라우팅을 설정하고, `module-federation.config.ts` 파일에서 각 remote 애플리케이션을 shell에 연결해 Module Federation이 `remotes` 정보를 알 수 있게 합니다.</small>_
+
+  ### Module Federation 설정 실행
+
+  Nx는 Module Federation을 사용할 때 좋은 개발 경험(DX), 성능, 확장성을 제공하기 위해 여러 기법을 사용합니다.
+  그중 하나는 현재 작업 중인 remotes만 파일 감시와 함께 실행하는 방식입니다. Nx에서는 이를 `dev remotes`라고 부릅니다.
+  나머지 프로젝트는 Nx가 빌드한 뒤 `http-server`를 통해 정적으로 실행합니다. 이를 `static remotes`라고 부릅니다.
+
+  _<Badge text="참고:" type="info" /> <small>Static Remotes와 함께 Nx를 사용하면 [Nx 캐싱](https://nx.dev/features/cache-task-results)의 이점도 얻을 수 있습니다. 변경하지 않은 remote는 캐시에서 복원되어 실행되므로 계산 비용을 줄일 수 있습니다.</small>_
+
+  모든 remotes를 Static Remotes로 취급해 shell을 실행하려면 다음 명령을 실행합니다.
+
+  ```bash
+  npx nx serve shop
+  ```
+
+  이제 `localhost:4200`에서 `shop`에 접근할 수 있고, 페이지 상단의 링크를 통해 remote 애플리케이션 사이를 이동할 수 있습니다.
+
+  특정 remote 애플리케이션(Dev Remote)을 작업 중이라면 `--devRemotes` 옵션을 전달하세요. Nx는 해당 remote 애플리케이션을 `@rspack/dev-server`로 실행하며 HMR과 파일 감시를 사용할 수 있게 합니다.
+
+  ```bash
+  npx nx serve shop --devRemotes=products
+  ```
+
+  이제 `products` 애플리케이션을 변경하면 브라우저의 shell 애플리케이션에 바로 반영됩니다.
+
+  _<Badge text="참고:" type="info" /> <small>Nx가 모든 항목을 실행하는 방식을 권장하는 이유는 [이 문서](https://nx.dev/concepts/module-federation/module-federation-and-nx#develop-as-a-user)에서 더 자세히 확인할 수 있습니다.</small>_
+
+  ### Module Federation 설정 빌드
+
+  Nx는 특히 monorepo에서 성능과 DX를 중요하게 다룹니다. Module Federation 시스템의 모든 프로젝트를 다시 배포해야 할 때, 전체를 한 번에 빌드하는 명령을 제공합니다.
+
+  ```bash
+  npx nx run-many -t build
+  ```
+
+  이 명령을 실행할 때 변경되지 않은 프로젝트가 있으면 Nx는 다시 빌드하지 않고 캐시된 빌드 산출물을 복원합니다. 하지만 이마저도 과할 때가 있습니다.
+  실제로 변경된 프로젝트만 다시 빌드하고 캐시된 빌드 산출물 복원에 드는 추가 시간도 줄이고 싶다면, Nx가 제공하는 affected 프로젝트만 다시 계산하는 명령을 사용할 수 있습니다.
+
+  ```bash
+  npx nx affected -t build
+  ```
+
+  빌드 산출물은 `dist/apps`에서 확인할 수 있습니다.
+
+</Steps>
+
+## 추가 Remotes
+
+애플리케이션을 개발하다 보면 remote 애플리케이션을 더 추가해야 할 때가 많습니다. 이때 Nx의 `remote` generator가 유용합니다.
+이 generator는 Module Federation이 설정된 React 프로젝트를 스캐폴딩할 뿐 아니라, 어떤 `host` 애플리케이션에 속하는지도 함께 지정할 수 있게 해 줍니다. 그러면 `host` 설정도 새 remote에 맞게 업데이트됩니다.
+
+<Steps>
+  ### 새 Remote Application 스캐폴딩
+
+  `login`이라는 새 remote를 추가하고 `shop` shell에 연결해 보겠습니다.
+
+  ```bash
+  npx nx g @nx/react:remote apps/login --host=shop
+  ```
+
+  이것으로 충분합니다. 이제 `npx nx serve shop --devRemotes`를 실행하면 `login` remote를 계속 개발하면서 브라우저에서 반영 결과를 확인할 수 있습니다.
+</Steps>
+
+## Nx의 Module Federation 추상화 이해
+
+Nx는 Module Federation 사용을 최대한 단순하게 만들면서, Nx 팀이 최적화와 새 기능, 수정 사항을 자연스럽게 제공할 수 있는 구조를 지향합니다.
+이를 위해 내부의 `ModuleFederationPlugin` 위에 몇 가지 추상화를 둡니다.
+
+### Nx의 ModuleFederationConfig
+
+Nx는 `ModuleFederationPlugin`에 필요한 설정을 간소화한 자체 `ModuleFederationConfig` 인터페이스를 제공합니다.
+자세한 내용은 [여기](https://github.com/nrwl/nx/blob/master/packages/webpack/src/utils/module-federation/models/index.ts#L41)에서 확인할 수 있습니다.
+
+중요한 부분만 살펴보겠습니다.
+
+<Steps>
+  #### Remotes
+
+  `remotes` 옵션은 shell(host)이 사용할 remote 애플리케이션을 정의하는 두 가지 방식을 제공합니다.
+
+  Nx 프로젝트 이름 배열을 전달하거나, Nx 프로젝트 이름과 remote entry 위치를 함께 담은 튜플을 전달할 수 있습니다.
+
+  ```js
+  remotes: ["products", ["cart", "http://my-live-cart.myapp.com/mf-manifest.json"]]
+  ```
+
+  내부적으로 Nx는 [Project Graph](https://nx.dev/features/explore-graph)를 분석해 remote 프로젝트의 entry 위치 정보를 찾고, 그에 맞게 `ModuleFederationPlugin`을 설정합니다.
+  이 정보는 `npx nx serve shop`을 실행할 때 Module Federation 설정을 실행하는 데도 사용됩니다.
+
+  #### Exposes
+
+  `exposes` 옵션은 `ModuleFederationPlugin`의 `exposes` 옵션과 대응됩니다. remote application이 어떤 모듈을 federate할지 지정할 수 있습니다.
+
+  #### Shared
+
+  Nx는 Project Graph를 사용해 Module Federation 설정에 포함된 프로젝트가 사용하는 모든 의존성(npm과 로컬)을 파악합니다. 그런 다음 감지된 버전의 의존성을 singleton으로 공유합니다. 빠르게 시작하기에는 좋지만, 때로는 이 동작을 직접 제어해야 할 수 있습니다.
+  `shared` 옵션에는 의존성을 어떻게 공유할지 결정하는 사용자 정의 로직 함수를 전달할 수 있습니다.
+
+  ```js
+  // 더 나은 tree-shaking을 위해 lodash는 공유하지 않습니다.
+  shared: function(libraryName, shareConfig) {
+    if(libraryName === 'lodash') {
+      return false
+    }
+  }
+  ```
+</Steps>
+
+### Nx의 withModuleFederation
+
+`withModuleFederation` 헬퍼는 `rspack.config.ts` 파일에 있습니다.
+주요 목적은 `module-federation.config.ts`가 제공하는 `config`를 기반으로 `ModuleFederationPlugin`을 설정하는 것입니다.
+
+또한 `ModuleFederationConfig`의 다른 속성을 추가로 설정할 수도 있습니다.
+
+```js
+withModuleFederation(config, {
+  dts: false,
+  runtimePlugins: []
+});
+```
+
+## 더 알아보기
+
+아래 링크에서 Nx의 Module Federation 지원을 더 자세히 볼 수 있습니다.
+
+- [Module Federation과 Nx](https://nx.dev/concepts/module-federation/module-federation-and-nx)
+- [마이크로 프론트엔드 아키텍처](https://nx.dev/concepts/module-federation/micro-frontend-architecture)
+- [Nx Module Federation Technical Overview](https://nx.dev/concepts/module-federation/nx-module-federation-technical-overview)
+- [Nx Module Federation Recipes](https://nx.dev/recipes/module-federation)

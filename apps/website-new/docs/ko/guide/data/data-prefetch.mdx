@@ -1,0 +1,49 @@
+# 데이터 프리페치
+
+`prefetch` 함수는 remote 모듈의 리소스와 **데이터**를 미리 가져올 때 사용합니다. 사용자가 특정 기능에 접근하기 전에 필요한 내용을 미리 로드하면 대기 시간을 줄이고 애플리케이션 성능과 사용자 경험을 개선할 수 있습니다.
+
+import React from 'react';
+import PrefetchTip from '@docs/ko/_components/data-fetch/prefetch-tip';
+
+{props.prefetchTip || React.createElement(PrefetchTip)}
+
+## 언제 사용하나요?
+
+컴포넌트를 바로 렌더링하지는 않지만 관련 JavaScript, CSS 또는 데이터를 미리 준비해 두고 싶을 때 `prefetch`를 사용합니다. 예를 들어 사용자가 링크나 버튼에 hover했을 때 `prefetch`를 실행하면, 실제 클릭 시점에 컴포넌트를 더 빠르게 렌더링할 수 있습니다.
+
+## API
+
+```typescript
+interface ModuleFederation {
+  prefetch(options: {
+    id: string;
+    dataFetchParams?: Record<string, any>;
+    preloadComponentResource?: boolean;
+  }): void;
+}
+```
+
+### 매개변수
+
+```ts
+type PrefetchOptions = {
+  // Remote module의 고유 식별자입니다. 형식은 '<remoteName>/<exposedModule>'입니다. 예: 'shop/Button'
+  id: string;
+
+  // Remote component에 data fetch 함수가 있다면 이 객체가 해당 함수로 전달됩니다.
+  dataFetchParams?: Record<string, any>;
+
+  // JavaScript chunk와 관련 CSS 파일을 포함해 component 리소스를 미리 로드할지 설정합니다. 기본값은 false입니다.
+  preloadComponentResource?: boolean;
+};
+```
+
+## 사용법 예제
+
+`shop`이라는 remote 애플리케이션이 `Button` 컴포넌트를 expose하고, 이 컴포넌트에 data fetch 함수가 연결되어 있다고 가정해 보겠습니다.
+
+import PrefetchDemo from '@docs/ko/_components/data-fetch/prefetch-demo';
+
+{props.prefetchDemo || React.createElement(PrefetchDemo)}
+
+`prefetch`를 유연하게 사용하면 애플리케이션의 시나리오와 사용자 행동에 맞춰 리소스 로딩 시점을 세밀하게 제어할 수 있고, 그 결과 애플리케이션 성능을 최적화할 수 있습니다.

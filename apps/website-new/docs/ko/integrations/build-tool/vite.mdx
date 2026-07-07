@@ -1,0 +1,64 @@
+# Vite
+
+- `Module Federation` 로딩 규격에 맞는 모듈을 빌드할 수 있습니다.
+- alias를 사용해 `Module Federation` 규격을 따르는 모듈을 소비할 수 있습니다.
+- 모듈의 shared dependencies를 설정할 수 있습니다. 이미 host 환경에 같은 의존성이 있다면 다시 로드하지 않습니다.
+- remote 타입이 있는 모듈은 타입을 자동으로 다운로드해 사용합니다.
+
+:::warning 지원하지 않는 옵션
+[dev](/configure/dev.html)를 제외한 모든 옵션을 지원합니다.
+:::
+
+- roadmap 🗓️
+  - remote 모듈 소비 시 HMR 지원
+  - Nuxt SSR
+
+## 빠른 시작
+
+### 설치
+
+다음 명령으로 플러그인을 설치합니다.
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm add @module-federation/vite --save',
+    yarn: 'yarn add @module-federation/vite --save',
+    pnpm: 'pnpm add @module-federation/vite --save',
+    bun: 'bun add @module-federation/vite --save',
+  }}
+/>
+
+### module-federation.config.ts 만들기
+
+다음 내용으로 `module-federation.config.ts` 파일을 만듭니다.
+
+import CreateConfig from '@docs/_snippets/vite/create-config';
+
+<CreateConfig />
+
+### 플러그인 등록
+
+`Vite`에서는 `vite.config.js`의 `plugins` 설정에 플러그인을 추가합니다.
+
+import RegisterPlugin from '@docs/_snippets/vite/register-plugin';
+
+<RegisterPlugin />
+
+## 빌드 플러그인 설정
+
+- 타입: `ModuleFederationPlugin(options: ModuleFederationOptions)`
+
+Module Federation 플러그인의 설정 구조는 다음과 같습니다.
+
+```ts
+type ModuleFederationOptions = {
+  name: string;
+  filename?: string;
+  remotes?: Array<RemoteInfo>;
+  shared?: ShareInfos;
+};
+```
+
+모든 설정 항목의 자세한 설명은 [설정 개요](/configure/index.html)에서 확인할 수 있습니다.

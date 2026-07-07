@@ -1,0 +1,313 @@
+---
+title: "Rsbuild로 구성하는 기본 CRA 예제"
+---
+
+# Rsbuild로 구성하는 기본 CRA 예제
+
+:::tip 데모 참고 자료
+예제 프로젝트 목록은 [Rsbuild CRA](https://github.com/module-federation/module-federation-examples/tree/master/cra)에서 확인할 수 있습니다.
+:::
+
+## 환경 설정
+
+시작하기 전에 [Node.js](https://nodejs.org/)를 설치하고 Node.js 버전이 16 이상인지 확인하세요. **Node.js 20 LTS 사용을 권장합니다.**
+
+현재 사용 중인 Node.js 버전은 다음 명령으로 확인할 수 있습니다.
+
+```bash
+node -v
+```
+
+현재 환경에 Node.js가 설치되어 있지 않거나 설치된 버전이 너무 낮다면 [nvm](https://github.com/nvm-sh/nvm) 또는 [fnm](https://github.com/Schniz/fnm)으로 필요한 버전을 설치할 수 있습니다.
+
+아래는 nvm으로 Node.js 20 LTS를 설치하는 예시입니다.
+
+```bash
+# Node.js 20 LTS 버전을 설치합니다.
+nvm install 20 --lts
+
+# 새로 설치한 Node.js 20을 기본 버전으로 설정합니다.
+nvm alias default 20
+
+# 새로 설치한 Node.js 20으로 전환합니다.
+nvm use 20
+```
+
+## 단계 1: React 애플리케이션 설정
+
+### React 프로젝트 생성
+
+`create-rsbuild`를 사용해 Rsbuild + React 프로젝트를 만들 수 있습니다. 다음 명령을 실행하세요.
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm create rsbuild@latest',
+    yarn: 'yarn create rsbuild',
+    pnpm: 'pnpm create rsbuild@latest',
+    bun: 'bun create rsbuild@latest',
+  }}
+/>
+
+
+#
+
+import { Steps } from '@theme';
+
+<Steps>
+### App 1 생성
+```bash
+create rsbuild@latest
+
+"Input target folder":
+> mfe1
+
+"Select framework":
+> React
+
+"Select language":
+> TypeScript
+```
+
+### App 2 생성
+
+```bash
+create rsbuild@latest
+
+"Input target folder":
+> mfe2
+
+"Select framework":
+> React
+
+"Select language":
+> TypeScript
+```
+
+### 설치
+```bash
+cd mfe1
+pnpm i
+```
+```bash
+cd mfe2
+pnpm i
+ ````
+
+</Steps>
+
+### 기존 프로젝트에서 React 사용
+
+React를 컴파일하려면 Rsbuild [React Plugin](https://rsbuild.dev/plugins/list/plugin-react)을 등록해야 합니다. 이 플러그인은 React 빌드에 필요한 설정을 자동으로 추가합니다.
+
+예를 들어 `rsbuild.config.ts`에 다음처럼 등록합니다.
+
+```ts title="rsbuild.config.ts"
+import { defineConfig } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
+
+export default defineConfig({
+  plugins: [pluginReact()],
+});
+```
+
+:::tip
+Create React App을 사용하는 프로젝트라면 [CRA Migration Guide](https://rsbuild.dev/guide/migration/cra)를 참고하세요.
+:::
+
+Yarn이 제공하는 설치 리포트를 확인해 Webpack 5 이상이 설치되어 있는지 확인하세요.
+
+## 단계 2: Module Federation 빌드 플러그인 설치
+
+```bash
+pnpm add @module-federation/enhanced
+pnpm add @module-federation/rsbuild-plugin --save-dev
+```
+
+## 단계 3: Entry 파일 업데이트
+
+두 애플리케이션 모두에서 `index.js` 파일 이름을 `bootstrap.js`로 바꿉니다. 이렇게 하면 `bootstrap.js`를 비동기로 로드할 수 있고, 두 애플리케이션 사이에서 Module Federation이 올바르게 동작하는 데 필요한 비동기 경계가 생깁니다.
+
+```bash
+mv src/index.tsx src/bootstrap.tsx
+```
+
+`bootstrap.tsx` 내용을 다음처럼 업데이트합니다.
+
+```typescript
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+```
+
+이제 두 애플리케이션에 새 `index.tsx` 파일을 만들고, `bootstrap.tsx`를 가져오도록 다음 내용을 작성합니다.
+
+```typescript
+import('./bootstrap');
+```
+
+## 단계 4: 생성과 노출
+
+이제 `MFE2`에서 노출할 컴포넌트를 만듭니다.
+
+<Steps>
+
+### 4.1 Button 컴포넌트 생성
+
+`MFE2`의 `src` 디렉터리에 `Button.tsx` 파일을 만들고 다음 내용을 작성합니다.
+
+```typescript
+const Button = () => (
+  <button>MFE2 Button</button>
+);
+
+export default Button;
+```
+
+### 4.2 App.tsx 업데이트
+
+`MFE2`의 `App.tsx`에서 Button 컴포넌트를 import하고 렌더링하도록 업데이트합니다.
+
+```typescript
+import './App.css';
+import Button from './Button';
+
+const App = () => {
+  return (
+    <div className="content">
+      <h1>MFE2</h1>
+      <Button />
+    </div>
+  );
+};
+
+export default App;
+```
+</Steps>
+
+## 단계 5: MFE2에서 Rsbuild 설정
+
+먼저 `MFE2`의 루트 디렉터리에 `module-federation.config.ts` 파일을 만들고 다음 설정을 작성합니다.
+
+```ts title="module-federation.config.ts"
+import { createModuleFederationConfig } from '@module-federation/rsbuild-plugin';
+
+export default createModuleFederationConfig({
+  name: 'remote',
+  exposes: {
+    './Button': './src/Button',
+  },
+  filename: 'remoteEntry.js',
+  shared: {
+    ...dependencies,
+    react: {
+      singleton: true,
+    },
+    'react-dom': {
+      singleton: true,
+    },
+  },
+});
+
+```
+
+그런 다음 `MFE2` 루트 디렉터리의 `rsbuild.config.ts` 파일을 다음 설정으로 수정합니다.
+
+```diff title="rsbuild.config.ts"
+import { defineConfig } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
++ import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
++ import mfConfig from './module-federation.config';
+
+export default defineConfig({
+  server: {
+    port: 3002
+  },
+  plugins: [
+    pluginReact()
++   pluginModuleFederation(mfConfig)
+  ]
+});
+```
+
+## 단계 6: remote 모듈 사용
+
+`MFE2`에서 노출한 모듈을 `MFE1`에서 사용합니다.
+
+<Steps>
+### 6.1 App.tsx 업데이트
+
+`MFE1`의 `App.tsx`에서 `MFE2` Button 컴포넌트를 import하고 렌더링하도록 업데이트합니다.
+
+```typescript
+import React from 'react';
+import Button from 'remote/Button'; // federated import
+
+function App() {
+  return (
+    <div>
+      <h1>MFE1</h1>
+      <Button />
+    </div>
+  );
+}
+
+export default App;
+```
+
+### 단계 6.2: MFE1에서 Rsbuild 설정
+
+먼저 `MFE1`의 루트 디렉터리에 `module-federation.config.ts` 파일을 만들고 다음 설정을 작성합니다.
+
+```ts title="module-federation.config.ts"
+import { createModuleFederationConfig } from '@module-federation/rsbuild-plugin';
+
+export default createModuleFederationConfig({
+  name: 'host',
+  remotes: {
+    remote: 'remote@http://localhost:3002/remoteEntry.js',
+  },
+  shared: {
+    react: {
+      singleton: true,
+    },
+    'react-dom': {
+      singleton: true,
+    },
+  },
+});
+
+```
+
+그런 다음 `MFE1` root directory의 `rsbuild.config.ts` 파일을 다음 설정으로 수정합니다.
+
+```diff title="rsbuild.config.ts"
+import { defineConfig } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
++ import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
++ import mfConfig from './module-federation.config';
+
+export default defineConfig({
+  server: {
+    port: 3001
+  },
+  plugins: [
+    pluginReact(),
++   pluginModuleFederation(mfConfig)
+  ]
+});
+```
+</Steps>
+
+
+이 설정은 `MFE1`에서 Module Federation을 활성화합니다. 개발 서버를 시작하면 `http://localhost:3001`에서 접근할 수 있습니다.
+
+마찬가지로 `MFE2`에서도 Module Federation을 활성화하면 `Button` 컴포넌트가 `http://localhost:3002/remoteEntry.js`로 expose됩니다. 개발 서버가 실행 중이면 `http://localhost:3002`에서 접근할 수 있습니다.

@@ -1,0 +1,49 @@
+# shareStrategy
+
+- 타입: `'version-first' | 'loaded-first'`
+- 필수: 아니요
+- 기본값: `'version-first'` (Webpack 플러그인/번들러 런타임이 설정)
+
+shared dependencies의 로딩 전략을 제어합니다.
+
+- `'version-first'`: 버전을 우선합니다. 가장 높은 버전의 shared dependencies를 사용하도록 보장합니다. shared dependencies를 등록하고 버전 호환성을 보장하기 위해 **초기화 중 모든 remote entry 파일이 자동으로 로드됩니다**. 버전 요구사항이 엄격할 때 권장합니다.
+
+- `'loaded-first'`: 이미 로드된 shared dependencies의 재사용을 우선합니다. remote는 초기화 중이 아니라 실제로 필요할 때 로드됩니다. 성능을 위해 이미 로드된 의존성을 재사용하고 싶을 때 권장합니다.
+
+:::warning 오프라인 remote 고려사항
+
+`'version-first'` 전략은 애플리케이션 시작 중 shared dependencies를 초기화하기 위해 remote entry 파일을 자동으로 로드합니다. 어떤 remote가 오프라인이거나 접근 불가능하면 시작 과정에서 `lifecycle: 'beforeLoadShare'`로 `errorLoadRemote` hook이 실행됩니다. 적절한 오류 처리가 없으면 애플리케이션 초기화 실패로 이어질 수 있습니다.
+
+`'loaded-first'` 전략은 모듈이 실제로 요청될 때까지 remote 로딩을 미룹니다. 따라서 오프라인 remote는 애플리케이션 시작 중이 아니라 해당 remote에 접근할 때만 실패를 유발합니다.
+
+**version-first와 오프라인 remote를 함께 사용할 때 일어나는 일:**
+1. 초기화 중 `initializeSharing()`을 통해 remote가 로드됩니다.
+2. remote manifest/entry가 오프라인이면 `module.getEntry()`가 실패합니다.
+3. `lifecycle: 'beforeLoadShare'`와 함께 `errorLoadRemote` hook이 호출됩니다.
+4. fallback이 제공되지 않으면 초기화가 멈추거나 실패할 수 있습니다.
+
+**version-first에 필요한 오류 처리:**
+```ts
+const plugin = {
+  name: 'offline-resilient-plugin',
+  errorLoadRemote(args) {
+    if (args.lifecycle === 'beforeLoadShare') {
+      // 시작 중 version-first 오프라인 remote 처리
+      return {
+        init: () => Promise.resolve(),
+        get: (module) => () => Promise.resolve(() => 'Offline Fallback')
+      };
+    }
+  }
+};
+```
+
+네트워크 문제가 발생할 수 있는 프로덕션 애플리케이션에서는 다음을 고려하세요.
+- 더 나은 회복력을 위해 `'loaded-first'` 전략 사용
+- `'beforeLoadShare'` lifecycle에 대한 포괄적인 오류 처리 구현
+- 플러그인을 통한 재시도 메커니즘 추가
+- 적절한 error boundary와 fallback component 사용
+
+자세한 오프라인 처리 전략은 [Error Load Remote 해결 방법](/blog/error-load-remote.html)을 참고하세요.
+
+:::

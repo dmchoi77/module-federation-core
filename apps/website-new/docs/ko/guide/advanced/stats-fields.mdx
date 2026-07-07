@@ -1,0 +1,72 @@
+import CommonMfManifestStatsFields from '@docs/ko/_components/configure/mf-manifest-stats-common.mdx'
+
+# Stats 필드 참조
+
+`mf-stats.json`은 [manifest](/configure/manifest.html)가 활성화되어 있을 때 생성됩니다. Exposes/shared/remotes asset, `metaData`(빌드 정보, remoteEntry 등), asset analysis 결과를 포함한 전체 빌드 통계를 담고 있습니다.
+
+이 문서는 `mf-stats.json`의 각 필드를 이해하는 데 도움을 줍니다. 디버깅과 분석에 유용합니다.
+
+## 최상위 필드
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `id` | `string` | 예 | 고유한 빌드 식별자 |
+| `name` | `string` | 예 | Federation 이름 |
+| `metaData` | `StatsMetaData` | 예 | 빌드와 remote entry 정보 |
+| `shared` | `StatsShared[]` | 예 | Shared dependency 상세 정보 |
+| `remotes` | `StatsRemote[]` | 예 | Remote 정보(entry/version 및 사용 위치) |
+| `exposes` | `StatsExpose[]` | 예 | Expose 정보(asset과 dependency) |
+
+<CommonMfManifestStatsFields />
+
+## 공유
+
+### StatsShared
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `id` | `string` | 예 | Shared id |
+| `name` | `string` | 예 | 패키지 이름 |
+| `version` | `string` | 예 | 이 빌드에서 사용한 버전 |
+| `singleton` | `boolean` | 예 | Singleton 여부 |
+| `requiredVersion` | `string` | 예 | requiredVersion |
+| `hash` | `string` | 예 | 콘텐츠 hash |
+| `assets` | `StatsAssets` | 예 | Asset 정보 |
+| `deps` | `string[]` | 예 | 의존성 |
+| `usedIn` | `string[]` | 예 | 사용하는 container/module |
+| `usedExports` | `string[]` | 예 | 사용된 export |
+| `fallback` | `string` | 예 | Tree-shaking fallback path/id |
+| `fallbackName` | `string` | 예 | Tree-shaking fallback name |
+| `fallbackType` | `RemoteEntryType` | 예 | Tree-shaking fallback type |
+
+## remotes
+
+`StatsRemote`는 remote 소비 정보를 기록합니다. 항상 `entry` 또는 `version` 중 하나를 포함합니다.
+
+### StatsRemoteVal (공통 필드)
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `moduleName` | `string` | 예 | Remote module 이름 |
+| `federationContainerName` | `string` | 예 | Remote container 이름 |
+| `consumingFederationContainerName` | `string` | 예 | Consumer container 이름 |
+| `alias` | `string` | 예 | Alias |
+| `usedIn` | `string[]` | 예 | 사용하는 container/module |
+
+### StatsRemote (상호 배타)
+
+- `entry: string` (`entry`가 있으면 `version`은 없습니다)
+- `version: string` (`version`이 있으면 `entry`는 없습니다)
+
+## exposes
+
+### StatsExpose
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `id` | `string` | 예 | Expose id |
+| `name` | `string` | 예 | Expose 이름(예: `./Button`) |
+| `path` | `string` | 아니요 | 소스 경로 |
+| `file` | `string` | 예 | 출력 파일 |
+| `requires` | `string[]` | 예 | 의존성 |
+| `assets` | `StatsAssets` | 예 | Asset 정보 |

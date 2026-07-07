@@ -1,0 +1,44 @@
+# exposes
+
+- 타입: `PluginExposesOptions`
+- 필수: 아니요
+- 기본값: `undefined`
+- 사용법: <code>{props.brandName || props.name || 'Module Federation'}</code>이 노출할 모듈과 파일 entry를 결정합니다.
+
+:::tip
+producer에서만 사용하는 매개변수입니다. `exposes`가 설정되어 있다면 해당 애플리케이션을 producer로 볼 수 있습니다.
+
+:::
+
+설정 후 노출된 모듈은 별도 chunk로 분리됩니다. 비동기 chunk가 있다면 이 역시 개별 chunk로 추출됩니다. 구체적인 추출 방식은 chunk splitting rule에 따라 달라집니다.
+
+`PluginExposesOptions` 타입은 다음과 같습니다.
+
+```tsx
+interface PluginExposesOptions {
+  [exposeKey: string]: string | ExposesConfig;
+}
+
+interface ExposesConfig {
+  // 파일 entry
+  import: string;
+}
+```
+
+`exposeKey`는 기본적으로 [Package Entry Points](https://nodejs.org/api/packages.html#package-entry-points) 규격과 일치합니다. 단, 정규식 matching은 지원하지 않습니다. 사용 예시는 다음과 같습니다.
+
+```jsx
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'provider',
+      exposes: {
+        // Note: "./" is not supported. Exporting as `.` indicates a default export
+        '.': './src/index.tsx',
+        './add': './src/utils/add.ts',
+        './Button': './src/components/Button.tsx',
+      },
+    }),
+  ],
+};
+```

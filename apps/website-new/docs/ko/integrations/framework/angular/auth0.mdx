@@ -1,0 +1,146 @@
+---
+title: "Auth0로 인증 처리하기"
+---
+# 인증: 공유 사용자 컨텍스트 통합하기
+
+이 문서는 Auth0와 Angular를 사용해 애플리케이션 shell 안의 여러 마이크로 프론트엔드에서 현재 사용자 컨텍스트 같은 인증 상태를 공유하는 방법을 설명합니다.
+
+## 개요
+
+마이크로 프론트엔드 아키텍처에서는 현재 사용자 정보처럼 여러 영역에서 함께 써야 하는 컨텍스트가 자주 생깁니다. 이 문서에서는 ID 관리 서비스인 Auth0와의 통합을 돕는 `@auth0/auth0-angular` 패키지를 사용해 인증 상태를 자연스럽게 공유하는 방법을 다룹니다.
+
+## 사전 준비
+
+시작하기 전에 다음 항목을 준비하세요.
+
+- Angular와 마이크로 프론트엔드 개념에 대한 기본 이해
+- [Auth0 관리 대시보드](https://manage.auth0.com/)에 등록된 Auth0 계정과 웹 애플리케이션
+- Module Federation으로 구성된 Angular 애플리케이션
+
+## 단계별 가이드
+
+### 1단계: Auth0 패키지 설치
+
+Angular 애플리케이션에서 Auth0 인증을 사용하려면 npm으로 `@auth0/auth0-angular`를 설치합니다.
+
+```bash
+npm i @auth0/auth0-angular
+```
+
+### 2단계: Auth0 설정
+
+1. [Auth0 관리 대시보드](https://manage.auth0.com/)로 이동해 Single Page Application(SPA)을 등록합니다.
+2. 등록 후 제공되는 `domain`과 `clientId`를 기록해 둡니다.
+3. Allowed Callback URLs 섹션에 애플리케이션 URL(예: `http://localhost:4200`)을 추가합니다.
+
+### 3단계: AuthModule 가져오기
+
+shell 애플리케이션과 마이크로 프론트엔드의 AppModule에 `@auth0/auth0-angular`의 `AuthModule`을 가져옵니다.
+
+```typescript title="app.module.ts"
+
+import { AuthModule } from '@auth0/auth0-angular';
+
+@NgModule({
+  imports: [
+    AuthModule.forRoot({
+      domain: 'YOUR_AUTH0_DOMAIN',
+      clientId: 'YOUR_AUTH0_CLIENT_ID'
+    }),
+    // other imports...
+  ],
+  // other module properties...
+})
+export class AppModule { }
+```
+
+`YOUR_AUTH0_DOMAIN`과 `YOUR_AUTH0_CLIENT_ID`를 Auth0 애플리케이션 설정에서 확인한 실제 값으로 바꿉니다.
+
+### 4단계: 로그인 기능 구현
+
+shell 애플리케이션에서 `AuthService`를 사용해 로그인 기능을 구현합니다.
+
+```typescript title="projects/shell/src/app/home/home.component.ts"
+
+import { Component } from '@angular/core';
+import { AuthService } from '@auth0/auth0-angular';
+
+@Component({
+  selector: 'app-home',
+  templateUrl: './home.component.html',
+  styleUrls: ['./home.component.scss']
+})
+export class HomeComponent {
+  user$ = this.auth.user$;
+
+  constructor(private auth: AuthService) {}
+
+  login(): void {
+    this.auth.loginWithRedirect();
+  }
+}
+```
+
+### 5단계: 사용자 정보 표시
+
+shell의 home 컴포넌트에서 로그인한 사용자의 이름을 표시합니다.
+
+```html title="projects/shell/src/app/home/home.component.html"
+<h1>Welcome!</h1>
+
+<p *ngIf="user$ | async as user">
+    User: {{user.name}}
+</p>
+
+<div>
+    <button (click)="login()" mat-flat-button color="primary">Login</button>
+</div>
+```
+
+#### 6단계: 마이크로 프론트엔드에서 AuthService 사용
+
+마이크로 프론트엔드 컴포넌트에서도 같은 방식으로 `AuthService`를 사용해 현재 사용자 정보에 접근할 수 있습니다.
+
+```typescript title="address.component.ts"
+import { AuthService } from '@auth0/auth0-angular';
+import { FormBuilder } from '@angular/forms';
+import { take } from 'rxjs/operators';
+
+@Component({
+  // component metadata...
+})
+export class AddressComponent {
+  // component properties...
+  constructor(
+    private auth: AuthService,
+    private fb: FormBuilder) {
+    this.auth.user$.pipe(take(1)).subscribe(user => {
+      if (!user) return;
+      // 사용자 정보로 폼을 미리 채우는 등의 작업 수행
+    });
+  }
+  // other component methods...
+}
+```
+
+### 7단계: 공유 인증을 위한 Module Federation 설정
+
+하나의 인증 상태를 유지하려면 shell과 마이크로 프론트엔드에서 `@auth0/auth0-angular` 패키지를 공유하도록 설정하세요.
+
+```typescript
+// shell과 마이크로 프론트엔드의 webpack.config.js에 설정
+
+module.exports = {
+  // existing configuration...
+  shared: share({
+    "@auth0/auth0-angular": { singleton: true, strictVersion: true, requiredVersion: 'auto' },
+    // other shared packages...
+  })
+};
+```
+
+이 설정은 애플리케이션 전체에서 `AuthService`의 단일 instance를 사용하게 하여 인증 상태를 공유할 수 있게 합니다.
+
+## 마무리
+
+이 단계를 따르면 Angular 애플리케이션의 여러 마이크로 프론트엔드 사이에서 인증 상태를 자연스럽게 공유할 수 있습니다. 사용자 컨텍스트 관리가 단순해지고, 애플리케이션의 모듈형 컴포넌트 전반에서 일관된 인증 상태를 유지해 사용자 경험도 개선됩니다.

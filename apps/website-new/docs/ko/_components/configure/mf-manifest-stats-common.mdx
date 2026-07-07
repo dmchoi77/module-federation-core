@@ -1,0 +1,68 @@
+## metaData (두 파일 공통)
+
+`metaData`는 이 빌드가 런타임에서 어떻게 소비되는지와 빌드 context를 설명합니다. `mf-stats.json`과 `mf-manifest.json` 모두 이 값을 포함합니다.
+
+### StatsMetaData
+
+`StatsMetaData`는 서로 배타적인 두 형태 중 하나를 사용합니다.
+
+- **함수 형태**: `getPublicPath: string`
+- **문자열 형태**: `publicPath: string` (선택적으로 `ssrPublicPath: string`)
+
+공통 필드:
+
+| 필드             | 타입             | 필수 | 설명                         |
+| ---------------- | ---------------- | ---- | ---------------------------- |
+| `name`           | `string`         | 예   | 현재 remote/host 이름        |
+| `globalName`     | `string`         | 예   | remoteEntry의 전역 이름      |
+| `buildInfo`      | `StatsBuildInfo` | 예   | 빌드 정보                    |
+| `remoteEntry`    | `ResourceInfo`   | 예   | remote entry 리소스          |
+| `ssrRemoteEntry` | `ResourceInfo`   | 아니요 | SSR remote entry가 있으면 포함 |
+| `types`          | `MetaDataTypes`  | 아니요 | type bundle 정보가 있으면 포함 |
+| `type`           | `string`         | 예   | APP, NPM                     |
+| `pluginVersion`  | `string`         | 아니요 | MF Plugin 버전               |
+
+### ResourceInfo
+
+| 필드   | 타입              | 필수 | 설명                                      |
+| ------ | ----------------- | ---- | ----------------------------------------- |
+| `path` | `string`          | 예   | 빌드 산출물 안의 상대 경로               |
+| `name` | `string`          | 예   | 파일 이름                                 |
+| `type` | `RemoteEntryType` | 예   | Remote entry 형식(`var/umd/system/...`)   |
+
+### StatsBuildInfo
+
+| 필드             | 타입       | 필수 | 설명                         |
+| ---------------- | ---------- | ---- | ---------------------------- |
+| `buildVersion`   | `string`   | 예   | 빌드 버전                    |
+| `buildName`      | `string`   | 예   | 빌드 이름                    |
+| `target`         | `string[]` | 아니요 | 빌드 target                  |
+| `plugins`        | `string[]` | 아니요 | Tree-shaking plugin          |
+| `excludePlugins` | `string[]` | 아니요 | 제외할 tree-shaking plugin   |
+
+### MetaDataTypes
+
+| 필드   | 타입     | 필수 | 설명                                                |
+| ------ | -------- | ---- | --------------------------------------------------- |
+| `path` | `string` | 예   | 출력 경로                                           |
+| `name` | `string` | 예   | 파일 이름. legacy type에서 필요하며 향후 deprecated 예정 |
+| `api`  | `string` | 예   | API entry                                           |
+| `zip`  | `string` | 예   | Zip 경로                                            |
+
+## assets (두 파일 공통)
+
+`StatsAssets`는 shared module 또는 exposed module의 sync/async asset을 설명합니다. 두 파일 모두 이 구조를 사용합니다.
+
+### StatsAssets
+
+| 필드  | 타입              | 필수 | 설명             |
+| ----- | ----------------- | ---- | ---------------- |
+| `js`  | `StatsAssetsInfo` | 예   | JavaScript asset |
+| `css` | `StatsAssetsInfo` | 예   | CSS asset        |
+
+### StatsAssetsInfo
+
+| 필드    | 타입       | 필수 | 설명              |
+| ------- | ---------- | ---- | ----------------- |
+| `sync`  | `string[]` | 예   | 초기 로드 asset   |
+| `async` | `string[]` | 예   | 비동기 로드 asset |

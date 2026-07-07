@@ -1,0 +1,210 @@
+# Data Fetching
+
+Remote 모듈은 필요한 data fetching을 스스로 처리하는 편이 좋습니다. consumer는 remote가 어떤 데이터에 의존하는지 몰라도 로딩과 렌더링만 담당할 수 있고, 같은 fetching 로직을 consumer마다 다시 구현하지 않아도 됩니다.
+
+CSR에서는 remote 컴포넌트 안에서 `useEffect`를 호출해 요청을 보내면 됩니다. 하지만 SSR에서는 `useEffect`가 서버에서 실행되지 않으므로, remote가 렌더링 전에 서버에서 데이터를 가져올 수 없습니다.
+
+Next.js, Remix, Modern.js 같은 주요 SSR 프레임워크는 보통 route-level data prefetching을 제공합니다. route가 매칭되면 먼저 data-loading 함수가 실행되고, 그 결과가 해당 route 컴포넌트에 주입됩니다. 다만 이 방식은 각 프레임워크의 router에 의존합니다. {props.name || 'Module Federation'}으로 exposed된 모듈은 host의 route tree 안에 있지 않기 때문에 이 메커니즘을 그대로 재사용하기 어렵습니다.
+
+이를 해결하기 위해 {props.name || 'Module Federation'}은 **component-level** data fetching 기능을 제공합니다. 덕분에 SSR 환경에서도 컴포넌트 단위로 데이터를 가져온 뒤 렌더링할 수 있습니다.
+
+:::note Component-level
+
+{props.name || 'Module Federation'}으로 exposed되는 모듈은 크게 두 가지로 나눌 수 있습니다.
+
+- **컴포넌트**: 자체 라우터가 없는 독립 UI 컴포넌트나 유틸리티 함수입니다.
+- **애플리케이션**: 완전한 router를 가진 하위 애플리케이션입니다. 보통 [Bridge](/guide/bridge/overview.html)를 통해 exposed되고 consumed됩니다.
+
+이 문서에서 다루는 기능은 전자, 즉 "component-level" data fetching입니다. 자세한 흐름은 [demo](https://github.com/module-federation/core/tree/main/apps/modern-component-data-fetch)를 참고하세요.
+:::
+
+## 사용 방법
+
+Data fetching은 SSR과 CSR을 모두 지원합니다. 아래에서는 producer와 consumer를 나누어 설명합니다.
+
+### Producer
+
+import React from 'react';
+import ProviderTip from '@docs/ko/_components/data-fetch/provider-tip';
+
+{props.providerTip || React.createElement(ProviderTip)}
+
+#### Data fetching 파일 규칙
+
+Data fetching은 **파일 규칙**을 사용합니다.
+
+- 각 exposed 모듈은 같은 이름의 `.data` 파일과 짝을 이룰 수 있습니다.
+- `.data` 파일에서 export한 함수를 **Data Loader**라고 부르며, 빌드 플러그인이 이 규칙을 인식합니다.
+- exposed 컴포넌트가 로드되면 런타임이 먼저 **Data Loader**를 호출해 데이터를 가져오고, 그 데이터를 컴포넌트에 주입한 뒤 렌더링합니다.
+
+예시 파일 구조는 다음과 같습니다.
+
+```bash
+.
+└── src
+    ├── List.tsx
+    └── List.data.ts
+```
+
+규칙 파일은 `fetchData`라는 이름의 함수를 export해야 합니다. 이 함수는 remote 컴포넌트가 렌더링되기 전에 실행됩니다.
+
+```ts title="List.data.ts"
+import type { DataFetchParams } from '@module-federation/bridge-react/data-fetch';
+export type Data = {
+  data: string;
+};
+
+export const fetchData = async (params: DataFetchParams): Promise<Data> => {
+  console.log('params: ', params);
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        data: `data: ${new Date()}`,
+      });
+    }, 1000);
+  });
+};
+```
+
+이 함수가 반환한 데이터 객체는 런타임에 의해 컴포넌트의 props로 주입됩니다. 기본 key는 `mfData`입니다.
+
+```tsx title="List.tsx"
+import React from 'react';
+import type { Data } from './index.data';
+
+const List = (props: { mfData?: Data }): JSX.Element => {
+  return (
+    <div>
+      {props.mfData?.data &&
+        props.mfData?.data.map((item, index) => <p key={index}>{item}</p>)}
+    </div>
+  );
+};
+
+export default List;
+```
+
+#### 기본 loader 함수 매개변수
+
+기본 매개변수는 loader 함수로 전달됩니다. 타입은 [DataFetchParams](/guide/bridge/react/load-component.html#datafetchparams)이며, 다음 필드를 포함합니다.
+
+- `isDowngrade`: 현재 실행 컨텍스트가 fallback 모드인지 나타냅니다. 예를 들어 Server-Side Rendering이 실패해 브라우저에서 서버로 새 요청을 보내 loader 함수를 호출하는 경우 값은 `true`입니다.
+
+#### 환경별 Data Loader 실행
+
+Loader 함수는 서버와 브라우저 중 한 곳에서 실행될 수 있습니다. 서버에서 실행되는 loader를 Server Loader, 브라우저에서 실행되는 loader를 Client Loader라고 부릅니다.
+
+CSR 애플리케이션에서는 loader 함수가 브라우저에서 실행되므로 기본적으로 모두 Client Loader입니다.
+
+SSR 애플리케이션에서는 loader 함수가 서버에서만 실행되므로 기본적으로 모두 Server Loader입니다. SSR에서는 {props.name || 'Module Federation'}이 서버에서 해당 loader 함수를 직접 호출합니다. 브라우저에서 route를 전환할 때도 {props.name || 'Module Federation'}이 SSR 서비스로 HTTP 요청을 보내며, 이 요청이 서버의 loader 함수를 다시 실행합니다.
+
+:::info SSR loader를 서버에서만 실행할 때의 장점
+
+- **사용 방식 단순화**: SSR 애플리케이션의 data fetching 방식이 일관되므로, 환경에 따라 실행 코드를 나눌 필요가 줄어듭니다.
+- **브라우저 번들 크기 감소**: 로직 코드와 그 의존성을 브라우저 대신 서버로 옮길 수 있습니다.
+- **유지보수성 개선**: 데이터 로직을 서버로 옮기면 프런트엔드 UI가 데이터 처리 로직에 직접 받는 영향을 줄일 수 있습니다. 서버 전용 의존성이 실수로 브라우저 번들에 포함되거나 그 반대가 되는 문제도 예방할 수 있습니다.
+
+:::
+
+#### SSR 애플리케이션에서 Client Loader 사용
+
+SSR 애플리케이션에서는 기본적으로 loader 함수가 서버에서만 실행됩니다. 하지만 상황에 따라 브라우저 요청이 SSR 서비스를 거치지 않고 데이터 소스로 직접 가야 할 수도 있습니다. 예를 들면 다음과 같습니다.
+
+1.  데이터 소스를 직접 요청해 브라우저 측 네트워크 비용을 줄이고 싶은 경우
+2.  브라우저에 데이터 캐시가 있어 SSR 서비스에 다시 요청하고 싶지 않은 경우
+
+{props.name || 'Module Federation'}은 SSR 애플리케이션에서 추가 `.data.client` 파일을 지원합니다. 이 파일도 같은 방식으로 이름 있는 함수를 export합니다. 서버의 Data Loader가 실패해 fallback이 발생하거나 브라우저에서 route를 전환하는 경우, 애플리케이션은 SSR 서비스에 다시 데이터 요청을 보내는 대신 CSR 애플리케이션처럼 브라우저에서 이 함수를 실행합니다.
+
+```ts title="List.data.client.ts"
+import cache from 'my-cache';
+
+export async function loader({ params }) {
+  if (cache.has(params.id)) {
+    return cache.get(params.id);
+  }
+  const res = await fetch('URL_ADDRESS?id={params.id}');
+  return {
+    message: res.message,
+  };
+}
+```
+
+:::warning 주의
+
+Client Loader를 사용하려면 대응되는 Server Loader가 반드시 있어야 하며, Server Loader는 `.data` 파일에 정의되어야 합니다.
+
+:::
+
+#### Producer가 자기 애플리케이션 데이터를 소비하는 경우
+
+Producer는 독립 페이지로 직접 방문될 수도 있습니다. 이 경우 두 시나리오 모두에서 데이터를 가져올 수 있어야 합니다.
+
+- Consumer가 producer를 로드할 때는 Data Loader를 통해 데이터가 주입됩니다.
+- Producer 페이지에 직접 접근할 때는 producer가 사용하는 프레임워크의 데이터 로딩 방식으로 데이터를 가져옵니다.
+
+예를 들어 producer가 Modern.js를 사용한다면, consumer가 로드하는 경우와 producer 페이지를 직접 방문하는 경우를 모두 지원해야 합니다. 다음처럼 구성할 수 있습니다.
+
+- Producer의 페이지 디렉터리에 `page.data.ts` 파일을 만들고 `loader`라는 이름의 함수를 export합니다.
+
+:::info
+Modern.js에서는 `page.data.ts`에서 `loader` 함수를 export해 [data fetching](https://modernjs.dev/guides/basic-features/data/data-fetch.html)을 처리합니다.
+:::
+
+```ts title="page.data.ts"
+// List.data.ts의 fetchData를 loader 구현으로 재사용합니다.
+import { fetchData } from '../components/List.data';
+import type { Data } from '../components/List.data';
+
+export const loader = fetchData;
+
+export type { Data };
+```
+
+- Producer의 `page`에서 이 데이터를 사용합니다.
+
+```tsx title="page.tsx"
+import { useLoaderData } from '@modern-js/runtime/router';
+import List from '../components/List';
+import './index.css';
+
+import type { Data } from './page.data';
+
+const Index = () => {
+  const data = useLoaderData() as Data;
+  console.log('page data', data);
+
+  return (
+    <div className="container-box">
+      <List mfData={data} />
+    </div>
+  );
+};
+
+export default Index;
+```
+
+### Consumer
+
+import Consumer from '@docs/ko/_components/data-fetch/consumer';
+
+{props.consumer || React.createElement(Consumer)}
+
+#### 사용자 정의 매개변수 전달
+
+Consumer는 런타임이 기본으로 주입하는 데이터 구조 외에도 `createLazyComponent`의 `dataFetchParams` 필드를 통해 loader 함수에 custom parameter를 전달할 수 있습니다. 예를 들어 사용자 식별자, 언어, tenant 같은 host 측 context를 전달할 수 있습니다.
+
+이 필드는 기본 매개변수와 병합된 뒤 loader로 전달됩니다.
+
+## FAQ
+
+### Application-Level Data Fetching도 지원하나요?
+
+Application-level 모듈에는 RSC(React Server Components)를 활용해 더 완성도 높은 기능을 제공하는 방향을 우선 검토하고 있습니다. 아직 탐색 중인 기능이니 이후 업데이트를 기대해 주세요.
+
+### Nested Producer를 지원하나요?
+
+아니요. 현재는 지원하지 않습니다.
+
+### Rslib 플러그인과 Modern.js 플러그인 외에 producer용 플러그인이 있나요?
+
+현재 Data Loader를 만들 수 있는 플러그인은 Rslib 플러그인과 Modern.js 플러그인뿐입니다.

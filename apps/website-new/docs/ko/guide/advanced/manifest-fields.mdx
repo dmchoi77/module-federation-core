@@ -1,0 +1,70 @@
+import CommonMfManifestStatsFields from '@docs/ko/_components/configure/mf-manifest-stats-common.mdx'
+
+# Manifest 필드 참조
+
+`mf-manifest.json`은 [manifest](/configure/manifest.html)를 활성화했을 때 생성됩니다. `mf-stats.json`에서 런타임에 필요한 정보만 추려낸 manifest이며, consumer가 사용하기 쉬운 안정적인 형태를 유지합니다.
+
+## 최상위 필드
+
+| 필드 | 타입 | 필수 | mf-stats.json | 설명 |
+| --- | --- | --- | --- | --- |
+| `id` | `string` | 예 | 예 | 고유한 빌드 식별자 |
+| `name` | `string` | 예 | 예 | Federation 이름 |
+| `metaData` | `StatsMetaData` | 예 | 예 | 빌드와 remote entry 정보 |
+| `shared` | `ManifestShared[]` | 예 | 예(더 자세함) | Shared 목록. 필요한 필드만 포함 |
+| `remotes` | `ManifestRemote[]` | 예 | 예(더 자세함) | Remotes 목록. 필요한 필드만 포함 |
+| `exposes` | `ManifestExpose[]` | 예 | 예(더 자세함) | Exposes 목록. 필요한 필드만 포함 |
+
+:::tip disableAssetsAnalyze의 영향
+[manifest](/configure/manifest.html)에 `disableAssetsAnalyze: true`를 설정하면 `mf-manifest.json`에서 `shared`와 `exposes`가 생략되고, `remotes`에서는 `assets`가 생략됩니다.
+:::
+
+## mf-stats.json과의 필드 차이
+
+<CommonMfManifestStatsFields />
+
+### 공유 (ManifestShared vs StatsShared)
+
+`mf-manifest.json`은 런타임에 필요한 핵심 shared 필드만 유지합니다.
+
+| 필드 | mf-manifest.json | mf-stats.json |
+| --- | --- | --- |
+| `id` | 예 | 예 |
+| `name` | 예 | 예 |
+| `version` | 예 | 예 |
+| `singleton` | 예 | 예 |
+| `requiredVersion` | 예 | 예 |
+| `hash` | 예 | 예 |
+| `assets` | 예 | 예 |
+| `deps` | 아니요 | 예 |
+| `usedIn` | 아니요 | 예 |
+| `usedExports` | 아니요 | 예 |
+| `fallback` | 선택 | 예 |
+| `fallbackName` | 선택 | 예 |
+| `fallbackType` | 선택 | 예 |
+
+### remotes (ManifestRemote vs StatsRemote)
+
+`mf-manifest.json`은 remote를 찾고 로드하는 데 필요한 최소 필드만 유지합니다.
+
+| 필드 | mf-manifest.json | mf-stats.json |
+| --- | --- | --- |
+| `moduleName` | 예 | 예 |
+| `federationContainerName` | 예 | 예 |
+| `alias` | 예 | 예 |
+| `consumingFederationContainerName` | 아니요 | 예 |
+| `usedIn` | 아니요 | 예 |
+| `entry` / `version` 중 하나 | 예 | 예 |
+
+### exposes (ManifestExpose vs StatsExpose)
+
+`mf-manifest.json`은 런타임 consumer에 필요한 필드만 노출합니다.
+
+| 필드 | mf-manifest.json | mf-stats.json |
+| --- | --- | --- |
+| `id` | 예 | 예 |
+| `name` | 예 | 예 |
+| `path` | 예 | 예 |
+| `assets` | 예 | 예 |
+| `file` | 아니요 | 예 |
+| `requires` | 아니요 | 예 |

@@ -1,0 +1,162 @@
+# Rspress
+
+:::info 참고
+[Rspress 2.0.0-beta.16](https://v2.rspress.rs/plugin/system/introduction) 이상이 필요합니다.
+:::
+
+**Rspress**에서 {props.brandName || props.name || 'Module Federation'} 산출물을 빌드하고 소비할 수 있도록 돕습니다.
+
+## 빠른 시작
+
+{props.demo}
+
+### 설치
+
+다음 명령으로 플러그인을 설치합니다.
+
+import InstallKit from '@docs/_snippets/install-kit';
+
+<InstallKit
+  pkgName={props.pkgName || '@module-federation/rspress-plugin'}
+/>
+
+### {props.configName || 'module-federation.config.ts'} 만들기
+
+다음 내용으로 {props.configName || 'module-federation.config.ts'} 파일을 만듭니다.
+
+import CreateConfig from '@docs/_snippets/rspress/create-config';
+
+{props.createConfig || <CreateConfig />}
+
+### 플러그인 등록
+
+import RegisterPlugin from '@docs/_snippets/rspress/register-plugin';
+import React from 'react';
+
+{props.registerPlugin || React.createElement(RegisterPlugin)}
+
+### 문서 조각 로딩
+
+`mdx` 파일에서 export된 문서 조각을 바로 불러올 수 있습니다.
+
+```mdx title='docs/ko/guide/intro.mdx'
+import Intro from 'mf-doc/intro-zh';
+
+{/* 문서 조각은 매개변수 전달을 지원하며, 전달된 값은 props로 소비됩니다. */}
+<Intro cmdTools={['a','b']} />
+```
+
+문서 조각은 매개변수 전달을 지원하며, 전달된 값은 props로 소비됩니다.
+
+문서 조각 안에서 `cmdTools` 변수를 사용해야 한다면 다음 예시를 참고하세요.
+
+```mdx title='docs/zh/guide/intro.mdx'
+{(props.cmdTools || ['pkg-a', 'pkg-b']).map(cmdTool=>(<code>{cmdTool}</code>))}
+```
+
+## 설정
+
+타입은 다음과 같습니다.
+
+import ConfigType from '@docs/_snippets/rspress/config-type';
+
+{props.configType || <ConfigType />}
+
+### {props.pluginOptionName || 'moduleFederationOptions'}
+
+[{props.brandName || props.name || 'Module Federation'} 설정](/configure/index.html)을 참고하세요.
+
+### rspressOptions
+
+Rspress 플러그인에 추가로 전달하는 설정입니다.
+
+#### autoShared
+
+- 타입: `boolean`
+- 기본값: `true`
+
+Rspress는 `react`, `react-dom`, `@mdx-js/react`를 서드파티 의존성으로 사용합니다. 이 세 의존성은 singleton이어야 하므로 빌드 중 `shared` 설정이 자동으로 주입됩니다.
+
+이 동작을 끄려면 `autoShared: false`를 설정할 수 있습니다.
+
+기본 `shared` 설정은 다음과 같습니다.
+
+```json
+  react: {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'react-dom': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'react/': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'react-dom/': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  '@mdx-js/react': {
+    singleton: true,
+    requiredVersion: false
+  },
+  '@rspress/core/runtime': {
+    singleton: true,
+    requiredVersion: false
+  }
+```
+
+#### rebuildSearchIndex
+
+- 타입: `boolean`
+- 기본값: `true`
+
+Rspress는 빌드 중 search index를 자동으로 생성하지만, 생성 과정은 `.mdx` 또는 `.md` 파일만 대상으로 합니다. 따라서 Module Federation 문서 조각으로 로드된 내용은 그대로 두면 검색 대상에 포함되지 않습니다.
+
+이를 피하기 위해 MF Rspress 플러그인은 SSG가 끝난 뒤 렌더링된 `html`을 기준으로 search index를 다시 만들어 검색 기능을 지원합니다.
+
+remoteSearch 등 다른 검색 기능을 사용한다면 `rebuildSearchIndex: false`로 이 동작을 끌 수 있습니다.
+
+> 참고: 이 기능은 ssg 모드에서만 동작합니다.
+
+#### rebuildLlms
+
+- 타입: `boolean`
+- 기본값: `true`
+
+Rspress가 `llms.txt`와 `llms-full.txt`를 생성할 때 federated document fragment의 제목, 설명, 페이지 콘텐츠가 아직 준비되지 않았을 수 있습니다.
+
+빈 llms output을 피하기 위해 MF Rspress 플러그인은 SSG가 끝난 뒤 렌더링된 `html`을 바탕으로 llms output을 다시 생성합니다.
+
+이 동작을 끄려면 `rebuildLlms: false`를 설정할 수 있습니다.
+
+> 참고: 이 기능은 ssg 모드에서만 동작하며, Rspress의 `llms`가 활성화된 경우에만 실행됩니다.
+
+## FAQ
+
+### 로컬 검색을 지원하나요?
+
+`ssg` 모드만 지원합니다. 자세한 내용은 [rebuildSearchIndex](#rebuildsearchindex)를 참고하세요.
+
+### Could not parse expression with swc: Expression expected
+
+MDX 컴포넌트를 참조할 때 다음 에러가 발생할 수 있습니다.
+
+```bash
+File: "/root/docs/zh/guide/basic/mf.mdx"
+Error: "23:8: Could not parse expression with swc: Expression expected"
+```
+
+Rspress가 MDX 컴포넌트를 파싱하는 과정에서 expression을 올바르게 해석하지 못해 발생하는 문제입니다. 다음처럼 해결할 수 있습니다.
+
+```diff
+import RemoteIntroDoc from 'mf-doc/intro';
+import Head from '@components/Head';
++ import React from 'react';
+
+- <RemoteIntroDoc head={<Head />} />
++ <RemoteIntroDoc head={React.createElement(Head)}/>
+
+```

@@ -1,0 +1,47 @@
+[
+  {
+    "type": "dir-section-header",
+    "name": "start",
+    "label": "시작하기"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "basic",
+    "label": "기본"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "runtime",
+    "label": "런타임"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "bridge",
+    "label": "브리지"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "data",
+    "label": "데이터 관리"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "advanced",
+    "label": "고급"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "debug",
+    "label": "디버그"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "deployment",
+    "label": "배포"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "troubleshooting",
+    "label": "문제 해결"
+  }
+]

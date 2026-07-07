@@ -1,0 +1,388 @@
+# dts
+
+- 타입: `boolean | PluginDtsOptions`
+- 필수: 아니요
+- 기본값: `true`
+- 사용 시나리오: <code>{props.brandName || props.name || 'Module Federation'}</code>의 타입 생성/소비 동작을 제어합니다.
+
+설정하면 producer는 빌드 중 압축된 타입 파일 `@mf-types.zip`(기본 이름)을 자동으로 생성하고, consumer는 `remotes`의 타입 파일을 자동으로 가져와 `@mf-types`(기본 이름)에 압축을 풉니다.
+
+`PluginDtsOptions` 타입은 다음과 같습니다.
+
+```ts
+interface PluginDtsOptions {
+  generateTypes?: boolean | DtsRemoteOptions;
+  consumeTypes?: boolean | DtsHostOptions;
+  tsConfigPath?: string;
+  cwd?: string;
+}
+```
+
+## generateTypes
+
+- 타입: `boolean | DtsRemoteOptions`
+- 필수: 아니요
+- 기본값: `true`
+- 사용 시나리오: `Module Federation` 타입 생성 동작을 제어합니다.
+
+`DtsRemoteOptions` 타입은 다음과 같습니다.
+
+```ts
+interface DtsRemoteOptions {
+  tsConfigPath?: string;
+  typesFolder?: string;
+  outputDir?: string;
+  deleteTypesFolder?: boolean;
+  additionalFilesToCompile?: string[];
+  compilerInstance?: 'tsc' | 'vue-tsc';
+  compileInChildProcess?: boolean;
+  generateAPITypes?: boolean;
+  extractThirdParty?: boolean;
+  extractRemoteTypes?: boolean;
+  abortOnError?: boolean;
+  deleteTsConfig?: boolean;
+  afterGenerate?: (
+    options: DtsGenerateTypesHookOptions,
+  ) => Promise<void> | void;
+}
+
+interface DtsGenerateTypesHookOptions {
+  zipTypesPath: string;
+  apiTypesPath: string;
+  zipName: string;
+  apiFileName: string;
+}
+```
+
+`generateTypes`를 `true`로 설정하면 다음 설정이 기본으로 생성됩니다.
+
+```json
+{
+  "generateAPITypes": true,
+  "abortOnError": false,
+  "extractThirdParty": false,
+  "extractRemoteTypes": false,
+  "compileInChildProcess": true,
+  "deleteTsConfig": true
+}
+```
+
+### extractRemoteTypes
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `undefined`
+- 사용 시나리오: producer의 `exposes` 콘텐츠가 자체 `remotes` 모듈을 다시 export하는 경우, `extractRemoteTypes: true`를 설정하면 consumer가 producer `exposes`의 모듈 타입을 정상적으로 가져올 수 있습니다.
+- 예제: [중첩 타입 re-export](/guide/basic/type-prompt.html#nested-type-re-export)
+
+`remotes`의 타입을 추출할지 여부입니다.
+
+### extractThirdParty
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `undefined`
+- 사용 시나리오: producer의 `exposes` 콘텐츠에 `antd`를 포함한 모듈이 있고 consumer에 `antd`가 설치되어 있지 않은 경우, `extractThirdParty: true`를 설정하면 consumer가 producer `exposes`의 모듈 타입을 정상적으로 가져올 수 있습니다.
+- 예제: [서드파티 패키지 타입 추출](/guide/basic/type-prompt.html#third-party-package-type-extraction)
+
+서드파티 패키지 타입을 추출할지 여부입니다.
+
+### generateAPITypes
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `undefined`
+- 예제: [Federation Runtime API 타입 프롬프트](/guide/basic/type-prompt.html#federation-runtime-api-type-prompt)
+
+`Federation Runtime`의 `loadRemote` 타입을 생성할지 여부입니다.
+
+### compileInChildProcess
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `undefined`
+
+자식 프로세스에서 타입을 생성할지 여부입니다.
+
+### abortOnError
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+타입 생성 중 문제가 발생했을 때 에러를 던질지 여부입니다.
+
+### afterGenerate
+
+- 타입: `(options: DtsGenerateTypesHookOptions) => Promise<void> | void`
+- 필수: 아니요
+- 기본값: `undefined`
+
+페더레이션 타입이 생성된 뒤, 생성된 파일이 emit되기 전에 실행됩니다.
+
+```ts title="module-federation.config.ts"
+new ModuleFederationPlugin({
+  dts: {
+    generateTypes: {
+      afterGenerate({ zipTypesPath, apiTypesPath }) {
+        console.log('zip types:', zipTypesPath);
+        console.log('api types:', apiTypesPath);
+      },
+    },
+  },
+});
+```
+
+### tsConfigPath
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `path.join(process.cwd(),'./tsconfig.json')`
+> 우선순위: dts.generateTypes.tsConfigPath > dts.tsConfigPath
+tsconfig 설정 파일 경로입니다.
+
+### outputDir
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `undefined`
+
+생성된 타입 asset의 사용자 지정 기준 출력 디렉터리입니다.
+
+이 옵션을 설정하지 않으면 Module Federation은 번들러 출력 디렉터리를 기준으로 `@mf-types.zip`과 `@mf-types.d.ts`를 생성합니다. remote entry가 `production/remoteEntry.js`처럼 중첩된 하위 디렉터리에 생성된다면, 타입 산출물도 entry 파일 옆에 생성되도록 `dts.generateTypes.outputDir`을 같은 중첩 출력 디렉터리로 설정하세요.
+
+이렇게 하면 기본으로 추론되는 타입 URL이 remote entry 경로와 맞춰집니다. 따라서 remote entry가 하위 디렉터리에서 제공된다는 이유만으로 consumer가 `remoteTypeUrls`를 설정할 필요는 보통 없습니다.
+
+```ts title="module-federation.config.ts"
+new ModuleFederationPlugin({
+  filename: 'production/remoteEntry.js',
+  dts: {
+    generateTypes: {
+      outputDir: `dist/react/${process.env.DEPLOY_ENVIRONMENT || 'production'}`,
+    },
+  },
+});
+```
+
+위 설정을 사용하면 생성된 파일은 다음 경로에 출력됩니다.
+`dist/react/production/@mf-types.zip` 및
+`dist/react/production/@mf-types.d.ts`.
+
+### typesFolder
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `'@mf-types'`
+
+생성되는 압축 타입 파일의 이름입니다. 예를 들어 `typesFolder`를 `custom`으로 설정하면 생성되는 압축 타입 파일 이름은 `custom.zip`입니다.
+
+### deleteTypesFolder
+
+- 타입: `boolean`
+- 필수: 아니요
+  -기본값: `true`
+
+생성된 타입 폴더를 삭제할지 여부입니다.
+
+### compilerInstance
+
+- 타입: `'tsc' | 'tsgo' | 'vue-tsc' | 'tspc' | string`
+- 필수: 아니요
+- 기본값: `'tsc'`
+
+타입을 컴파일할 인스턴스입니다.
+
+### deleteTsConfig
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `true`
+
+임시 tsconfig 설정 파일을 삭제할지 여부입니다.
+
+## consumeTypes
+
+- 타입: `boolean | DtsHostOptions`
+- 필수: 아니요
+- 기본값: `true`
+- 사용 시나리오: `Module Federation` 타입 소비(로딩) 동작을 제어합니다.
+
+`DtsHostOptions` 타입은 다음과 같습니다.
+
+```ts
+interface DtsHostOptions {
+  typesFolder?: string;
+  abortOnError?: boolean;
+  remoteTypesFolder?: string;
+  deleteTypesFolder?: boolean;
+  maxRetries?: number;
+  consumeAPITypes?: boolean;
+  family?: 0 | 4 | 6;
+}
+```
+
+`consumeTypes`를 `true`로 설정하면 다음 설정이 기본으로 생성됩니다.
+
+```json
+{
+  "abortOnError": false,
+  "consumeAPITypes": true
+}
+```
+
+### consumeAPITypes
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `true`
+- 예제: [Federation Runtime API 타입 프롬프트](/guide/basic/type-prompt.html#federation-runtime-api-type-prompt)
+
+런타임 `loadRemote` API의 타입을 생성할지 여부입니다.
+
+### maxRetries
+
+- 타입: `number`
+- 필수: 아니요
+- 기본값: `3`
+
+로딩 실패 시 최대 재시도 횟수입니다.
+
+### abortOnError
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+타입 로딩 중 문제가 발생했을 때 에러를 던질지 여부입니다.
+
+### typesFolder
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `'@mf-types'`
+
+타입 로딩에 성공한 뒤 저장할 디렉터리입니다.
+
+### deleteTypesFolder
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `true`
+
+타입 파일을 로드하기 전에 이전에 로드된 `typesFolder` 디렉터리를 삭제할지 여부입니다.
+
+### remoteTypesFolder
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `'@mf-types'`
+
+`remotes` 디렉터리 설정에 대응되는 `typesFolder`입니다.
+
+### remoteTypeUrls
+
+- 타입: `(() => Promise<RemoteTypeUrls>) | RemoteTypeUrls`
+- 필수: 아니요
+- 기본값: `undefined`
+
+`remote` 타입 파일 주소를 가져올 때 사용합니다.
+
+애플리케이션 시나리오:
+
+- 빌드 플러그인 없이 런타임 API만 사용해 producer를 로드하는 경우입니다. `module-federation.config.ts` 설정 파일을 만들고 이 옵션을 설정해 MF 타입 파일 주소를 알려 줄 수 있습니다.
+
+```ts title="module-federation.config.ts"
+import { createModuleFederationConfig, type moduleFederationPlugin } from '@module-federation/enhanced';
+
+export default createModuleFederationConfig({
+  // ...
+  remotes: {
+    'remote1-alias': 'remote1@http://localhost:80801/remoteEntry.js'
+  },
+  dts:{
+    consumeTypes:{
+      remoteTypeUrls: async()=>{
+        // 타입 파일 주소를 얻기 위한 요청 인터페이스를 시뮬레이션합니다.
+        const data = await new Promise<moduleFederationPlugin.RemoteTypeUrls>(resolve=>{
+          setTimeout(()=>{
+            resolve({
+              remote1:{
+                alias: 'remote1-alias',
+                api:'http://localhost:8081/custom-dir/@mf-types.d.ts',
+                zip:'http://localhost:8081/custom-dir/@mf-types.zip'
+              }
+            } )
+          },1000)
+        });
+
+        return data;
+      }
+    }
+  }
+});
+```
+
+
+- remote가 `remoteEntry.js`인 경우, 타입 파일 주소는 보통 js 파일을 `@mf-types.zip` 같은 대응 타입 파일로 바꿔 추론합니다. 하지만 실제 업로드된 타입 파일 주소가 이와 다를 수 있으므로, 이 설정으로 MF에 실제 타입 파일 주소를 알려 줄 수 있습니다.
+
+```ts title="module-federation.config.ts"
+import { createModuleFederationConfig } from '@module-federation/enhanced';
+
+export default createModuleFederationConfig({
+  // ...
+  remotes: {
+    'remote1-alias': 'remote1@http://localhost:80801/remoteEntry.js'
+  },
+  dts:{
+    consumeTypes:{
+      remoteTypeUrls: {
+        // remote 이름
+        remote1:{
+          alias: 'remote1-alias',
+          api:'http://localhost:8081/custom-dir/@mf-types.d.ts',
+          zip:'http://localhost:8081/custom-dir/@mf-types.zip'
+        }
+      }
+    }
+  }
+});
+```
+
+### family
+
+- 타입: `0 | 4 | 6`
+- 필수: 아니요
+- 기본값: `0`
+
+네트워크 작업에 사용할 IP 버전 family를 설정합니다.
+
+### typesOnBuild
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+기본적으로 Module Federation은 production(`process.env.NODE_ENV === 'production'`)에서 타입 파일을 로드하지 않습니다. production build에서 타입 로딩을 활성화하려면 `typesOnBuild`를 `true`로 설정하세요.
+
+## tsConfigPath
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `path.join(process.cwd(),'./tsconfig.json')`
+
+tsconfig 설정 파일 경로입니다.
+
+## cwd
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `undefined`
+
+compiler를 실행할 작업 디렉터리입니다.
+
+## displayErrorInTerminal
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `true`
+
+터미널에 에러 로그를 출력할지 여부입니다.

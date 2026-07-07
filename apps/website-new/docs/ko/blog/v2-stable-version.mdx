@@ -1,0 +1,148 @@
+# MF 2.0 안정 버전 릴리스: 개발 생산성과 극한의 성능 사이
+
+1년 전 Module Federation 2.0([MF 2.0](https://module-federation.io/ko/blog/announcement.html))을 오픈소스로 공개한 뒤, 커뮤니티로부터 많은 피드백과 제안을 받았습니다. 성숙한 마이크로 프론트엔드 솔루션은 협업 개발 효율을 높이는 데 그치지 않고, 극한의 성능을 가능하게 하는 핵심 엔진도 제공해야 한다고 생각합니다. 지난 1년 동안 이 방향을 바탕으로 MF 2.0을 다듬고 기능을 확장해 왔습니다.
+
+이제 **MF 2.0이 공식 안정 버전**이 되었음을 알립니다. 이번 안정 버전 릴리스는 강력한 성능 최적화, 더 넓은 배포 시나리오, 개선된 개발자 경험을 제공합니다.
+
+## 엔드투엔드 성능 최적화 시스템
+
+MF 2.0은 마이크로 프론트엔드 애플리케이션의 성능 파이프라인을 **build, asset loading, rendering, data fetching** 네 단계에 걸쳐 체계적으로 재구성합니다.
+
+각 기능은 따로 떨어져 있지 않고, Module Federation 시나리오에 맞춘 엔드투엔드 성능 최적화 시스템으로 함께 동작합니다.
+
+**모든 기능은 점진적 도입을 지원합니다.** 기존 아키텍처를 한 번에 크게 다시 쓰지 않아도, 필요에 따라 단계적으로 활성화할 수 있습니다. 기존 시스템의 안정성을 해치지 않으면서 도입할 수 있다는 점이 중요합니다.
+
+### Tree Shaking for Shared Dependencies
+기존 shared dependencies는 중복 로딩을 피하는 데 도움이 되지만, 완전성을 보장하기 위해 shared libraries를 **패키지 전체로 번들링하고 expose**하는 경우가 많았습니다. 실제로는 일부 기능만 사용하더라도 전체 라이브러리를 로드해야 하므로 번들 크기가 계속 커지는 문제가 생깁니다.
+
+**MF 2.0에서는 이 문제를 다음 방식으로 해결합니다.**
+
+**Shared dependencies가 이제 tree shaking을 지원합니다.**
+
+`treeShaking`을 활성화하기만 하면, MF는 Module Federation의 동적인 특성을 유지하면서 shared dependencies를 필요에 맞게 pruning할 수 있습니다. 실제로 사용될 가능성이 있는 모듈만 남기므로 기존 프로젝트와의 호환성을 유지하면서도 shared bundles 크기를 크게 줄일 수 있습니다.
+
+![](https://module-federation-assest.netlify.app/document/announcement/blog/v2-stable-version/enable-shared-tree-shaking.png)
+
+MF 2.0은 시나리오에 따라 두 가지 모드를 제공합니다.
+
+- **runtime-infer**: 외부 의존성 없이 바로 사용할 수 있는 모드입니다. runtime에서 이미 로드된 tree-shaken shared bundles를 먼저 재사용하려고 시도하고, 기능이 충분하지 않으면 전체 dependency loading으로 자동 fallback해 기능 완전성을 보장합니다. `usedExports`를 활용하면 재사용 효율을 높일 수 있습니다.
+
+- **server-calc**: 서버 또는 CI 시스템이 여러 애플리케이션의 dependency usage를 분석하고, 전역적으로 최적화된 shared-pruning 결과를 만드는 모드입니다. 대규모 시스템에 적합합니다.
+
+또한 shared dependencies의 사용 방식과 번들 크기 절감 효과를 쉽게 확인할 수 있는 **visual analysis dashboard**도 제공합니다.
+
+**Ant Design** 같은 대형 컴포넌트 라이브러리에서 애플리케이션이 Badge, Button, List 컴포넌트만 사용한다고 가정해 보겠습니다. shared-dependency tree shaking을 사용하지 않으면 shared bundle 크기는 약 **1404.2 KB**입니다. tree shaking을 활성화하면 실제 로드 크기는 **344.0 KB**로 줄어들며, 불필요한 코드를 약 **75.5%** 줄일 수 있습니다.
+
+
+![설정](https://module-federation-assest.netlify.app/document/announcement/blog/v2-stable-version/set-config.png)
+![분석 결과](https://module-federation-assest.netlify.app/document/announcement/blog/v2-stable-version/analyze-result.png)
+
+### 서버 사이드 렌더링(SSR)
+SSR은 서버에서 완성된 HTML을 생성해 브라우저에 직접 반환합니다. 따라서 클라이언트 사이드 hydration을 기다리지 않고도 페이지를 렌더링할 수 있습니다. 이는 **첫 화면 성능**과 **SEO**를 크게 개선합니다. 중대형 웹 애플리케이션에서 SSR은 사실상 표준 기능이 되었습니다.
+
+하지만 마이크로 프론트엔드 아키텍처에서 SSR 구현은 오랫동안 까다로웠습니다. 초기 MF 버전은 이 기능을 다루지 않았기 때문에 개발자는 **아키텍처 유연성**과 **성능 이점** 중 하나를 선택해야 했습니다.
+
+**MF 2.0에서는 이 트레이드오프를 해소했습니다.**
+
+이제 **{ props.framework || 'Modern.js' }** 안에서 **MF SSR**을 직접 사용할 수 있으며, 마이크로 프론트엔드 애플리케이션도 고성능 SSR 기능을 갖출 수 있습니다.
+
+{ props.ssr || '' }
+
+### Isomorphic Data Prefetching
+MF 2.0은 **SSR과 CSR** 시나리오를 모두 지원하는 새로운 **isomorphic data fetching solution**을 도입합니다. 내장 **`prefetch`**와 **`cache`** API를 통해 data prefetching과 cache 관리를 통합하고, 렌더링 모드가 달라도 안정적이고 예측 가능한 성능을 제공합니다.
+
+프리로딩과 캐싱을 활용하면 페이지가 렌더링 전에 핵심 데이터를 준비할 수 있습니다. 반복 요청과 워터폴 로딩을 막아 초기 로드와 상호작용 반응성을 모두 개선합니다.
+
+{ props.dataSolution || '' }
+
+
+{ props.serverPreload || '' }
+
+
+### Rust 기반 기능
+대규모 프로젝트에서는 **manifest 생성**이 빌드 단계의 성능 병목이 되는 경우가 많습니다. MF 2.0은 이 핵심 기능을 **Rust 구현**으로 옮겨 Rust의 높은 성능과 메모리 안전성을 활용하고, manifest 생성 시간을 크게 줄였습니다.
+
+동시에 **AsyncStartUp**도 Rust로 다시 작성했습니다. 이제 동일한 기능을 얻기 위해 비동기 진입점을 따로 설정할 필요가 없고, 첫 화면 성능 관련 리스크도 효과적으로 줄어듭니다. 애플리케이션 시작 경로가 더 단순하고 안정적이며 효율적으로 바뀝니다.
+
+{ props.deploy || '' }
+
+## More Powerful Debugging System
+MF 2.0은 **observability와 debuggability**를 중심으로 포괄적인 debugging system을 구성합니다. shared dependencies, module relationships, potential side effects를 **visible, traceable, detectable in advance**하게 만들어 동적 애플리케이션 개발과 통합에서 생기는 불확실성을 크게 줄입니다.
+
+### 사이드 이펙트 스캐너
+remote 모듈을 소비하기 전에 팀은 그 모듈이 전역 변수를 오염시키는지, 이벤트 리스너를 등록하는지, 스타일 범위에 영향을 주는지 평가해야 하는 경우가 많습니다. 이런 불확실성은 마이크로 프론트엔드 도입 비용을 크게 높입니다.
+
+MF 2.0은 빌드 산출물을 정적으로 분석해 다음 사이드 이펙트를 식별하는 **Side Effect Scanner**를 제공합니다.
+
+- 전역 변수
+- 이벤트 리스너
+- CSS selector 영향 범위
+
+함께 제공되는 **CLI tool**은 스캔을 자동으로 수행하고 결과를 출력합니다. consumer는 통합 전에 위험을 파악할 수 있고, federated modules 도입 비용을 크게 낮출 수 있습니다.
+
+### Chrome Extension for Dependency Visualization
+기존 Chrome 확장 프로그램을 새 UI와 더 강력한 디버깅 기능으로 전면 업그레이드했습니다. 이제 Module Federation의 런타임 상태를 **볼 수 있고, 조회할 수 있으며, 검증할 수 있습니다**.
+
+- **Smart sidebar sync**
+패널이 수동 새로고침이나 재연결 없이 현재 페이지를 자동으로 따라가 더 매끄러운 디버깅 경험을 제공합니다.
+
+
+- **Shared dependency visualization**
+새 **Shared** 패널은 현재 페이지의 shared dependency loading 상태를 명확히 보여 줍니다. 예를 들어 다음을 확인할 수 있습니다.
+  - React가 성공적으로 공유됐는지
+  - 실제로 어떤 공유 버전이 사용 중인지
+  - 공유 전략이 기대한 대로 동작하는지
+![shared dependencies 시각화](https://module-federation-assest.netlify.app/document/announcement/blog/v2-stable-version/chrome-shared.png)
+
+- **Fast dependency graph navigation**
+의존성 그래프에서 원하는 모듈을 검색하고, 상위/하위 관계를 계층 구조로 확인할 수 있습니다. 복잡한 의존성도 훨씬 쉽게 파악할 수 있습니다.
+
+![의존성 그래프](https://module-federation-assest.netlify.app/document/announcement/blog/v2-stable-version/chrome-dep.png)
+
+- **Data trimming mode**
+모듈 수가 많을 때 트리밍 모드를 활성화하면 프록시 데이터 크기를 줄이고 localStorage 제한으로 인한 주입 실패를 피할 수 있습니다.
+*트리밍된 데이터는 프리로딩 분석에만 영향을 주며 실제 동작에는 영향을 주지 않으므로 안전하게 활성화할 수 있습니다.*
+
+
+## 더 풍부한 생태계
+
+MF는 이제 주요 **번들러, 애플리케이션 프레임워크, UI 스택**을 지원하며, 다양한 기술 생태계에서 안정적으로 동작합니다. 팀은 기존 기술 선택을 바꾸지 않고도 Module Federation을 도입할 수 있습니다.
+
+- **번들러**: Webpack / Rspack / Rollup / Rolldown
+
+- **빌드 도구**: Rsbuild / Vite / Metro
+
+- **프레임워크 / 도구**: Modern.js / Next.js / Rspress / Rslib / Storybook
+
+- **UI 라이브러리**: React / Vue / React Native
+
+![MF 2.0 ecosystem](https://module-federation-assest.netlify.app/document/announcement/blog/v2-stable-version/ecosystem.png)
+
+여기에 더해 MF 2.0은 Module Federation 기능을 더 중요한 개발/전달 시나리오로 확장합니다.
+
+### Node.js
+이제 Module Federation을 **Node.js runtime**에서 직접 사용할 수 있습니다. remote 모듈은 브라우저뿐 아니라 **SSR, BFF, Node service layers**에서도 소비할 수 있으며, 프론트엔드와 백엔드를 아우르는 통합 모듈 전달 모델을 구성할 수 있습니다.
+
+### Rspress 문서 분할
+**Rspress**에서는 MF가 문서 또는 라우트 단위의 remote 모듈 분할과 로딩을 지원합니다. 대형 문서 사이트를 **Module Federation 기반으로 분해하고 독립적으로 릴리스**할 수 있어, 여러 팀이 함께 운영하는 문서/지식 플랫폼에 적합합니다.
+
+### Rstest
+**Rstest** 테스트 시스템 안에서는 Module Federation이 실제 런타임 방식으로 remote 모듈을 로드할 수 있습니다. 이를 통해 마이크로 프론트엔드와 MF 애플리케이션은 **프로덕션에 가까운 통합 테스트와 엔드투엔드 테스트**를 수행할 수 있고, 테스트와 실제 런타임 동작 사이의 차이를 줄일 수 있습니다.
+
+## Changes
+### Minor Changes
+이번 업그레이드에서는 **안정성과 호환성**을 우선했습니다. 호환성을 깨는 변경은 없고, 몇 가지 마이너 업데이트만 포함되어 있습니다. 주요 변경 사항은 다음과 같습니다.
+
+- `library.type`의 기본값이 `var`에서 `global`로 변경되었습니다.
+- `runtimePlugins`가 설정 매개변수를 지원합니다.
+
+## 다음 계획
+### React 서버 컴포넌트
+React Server Components(RSC)는 React 생태계의 큰 진전입니다. MF x SSR과 비교했을 때 MF x RSC 조합은 더 작은 번들과 더 안전한 데이터 처리로 더 나은 성능을 제공할 수 있습니다. 기본 demo에서 이미 이 접근을 검증했으며, Modern.js에서 더 강한 지원과 통합을 제공할 예정입니다.
+
+### AI 친화적 설계
+AI가 컴포넌트와 모듈을 이해하고 사용할 수 있도록 MF에 **필요한 맥락 정보와 메타데이터**를 점진적으로 추가하고 있습니다. 여기에는 기능 경계, 사용 제약, 런타임 환경, 의존성 관계가 포함됩니다. 또한 컴포넌트 자산을 AI가 이해하고 평가하고 선택할 수 있도록 **정량 점수와 신뢰도 메커니즘**도 도입할 계획입니다.
+
+{ props.aiFriendly || '' }
+
+{ props.next || '' }

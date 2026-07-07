@@ -1,0 +1,31 @@
+빌드 플러그인을 사용하면 프로젝트가 시작될 때 MF 인스턴스가 자동으로 생성되고 메모리에 저장됩니다. 이 경우 MF 인스턴스의 메서드를 바로 호출할 수 있습니다.
+
+```ts
+import { loadRemote } from '@module-federation/enhanced/runtime';
+
+loadRemote('remote1');
+```
+
+빌드 플러그인을 사용하지 않는다면 관련 API를 호출하기 전에 MF 인스턴스를 직접 만들어야 합니다.
+
+```ts
+import { createInstance } from '@module-federation/enhanced/runtime';
+
+const mf = createInstance({
+  name: 'host',
+  remotes: [
+    {
+      name: 'remote1',
+      entry: 'http://localhost:2001/vmok-manifest.json',
+    },
+  ],
+});
+
+mf.loadRemote('remote1');
+```
+
+:::tip ModuleFederation 인스턴스
+
+`ModuleFederation` 클래스로 생성되는 객체이며, 모든 런타임 기능을 포함합니다. 콘솔에서 `__FEDERATION__.__INSTANCES__`를 입력하면 전체 인스턴스 정보를 확인할 수 있습니다.
+
+:::

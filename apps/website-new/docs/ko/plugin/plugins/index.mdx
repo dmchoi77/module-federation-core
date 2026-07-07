@@ -1,0 +1,67 @@
+import { PackageManagerTabs, Tabs, Tab } from '@theme';
+
+# Node 플러그인
+
+Server-side Module Federation을 사용하면 backend 아키텍처와 애플리케이션의 server-side rendering에서 다양한 구성을 만들 수 있습니다.
+
+
+## 사용법
+
+이 런타임 플러그인은 `module-federation/node` 패키지에서 제공합니다.
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm add @module-federation/enhanced @module-federation/node --save',
+    yarn: 'yarn add @module-federation/enhanced @module-federation/node --save',
+    pnpm: 'pnpm add @module-federation/enhanced @module-federation/node --save',
+    bun: 'bun add @module-federation/enhanced @module-federation/node --save',
+  }}
+/>
+
+
+### 설정
+
+런타임 플러그인은 compile-time 또는 runtime에 적용할 수 있습니다.
+<Tabs>
+  <Tab label="Rspack">
+  ```typescript title="rspack.config.js"
+  const {ModuleFederationPlugin} = require('@module-federation/enhanced/rspack');
+
+  new ModuleFederationPlugin({
+    // other options
+    runtimePlugins: [
+      require.resolve('@module-federation/node/runtimePlugin')
+    ]
+  });
+  ```
+  </Tab>
+  <Tab label="Webpack">
+  ```typescript title="webpack.config.js"
+  const {ModuleFederationPlugin} = require('@module-federation/enhanced/webpack');
+
+  new ModuleFederationPlugin({
+    // other options
+    runtimePlugins: [
+      require.resolve('@module-federation/node/runtimePlugin')
+    ]
+  });
+  ```
+  </Tab>
+  <Tab label="Module Federation Runtime">
+    ```typescript title="app.js"
+    import {init} from '@module-federation/runtime';
+    import nodeRuntimePlugin from '@module-federation/node/runtimePlugin';
+    init({
+      name: '@demo/app-main',
+      remotes: [
+        {
+          name: '@demo/app2',
+          entry: 'http: //localhost:3006/mf-manifest.json',
+          alias: 'app2',
+        },
+      ],
+      plugins: [nodeRuntimePlugin()],
+    });
+    ```
+  </Tab>
+</Tabs>

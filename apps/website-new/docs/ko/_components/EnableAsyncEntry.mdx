@@ -1,0 +1,24 @@
+`@module-federation/modern-js-v3` 플러그인을 사용하면 builder 타입에 따라 필요한 비동기 entry가 기본으로 활성화됩니다.
+
+다만 [빌드 모드](https://modernjs.dev/ko/guides/concept/entries.html#build-mode-entry)를 사용한다면 비동기 entry를 직접 설정해야 합니다.
+
+아래에서 비동기 entry를 활성화하는 방법을 살펴보겠습니다.
+
+`bootstrap.js` 파일을 만들고 기존 entry 파일의 내용을 이 파일로 옮깁니다.
+
+```diff title="bootstrap.js"
++ import React from 'react';
++ import ReactDOM from 'react-dom';
++ import App from './App';
++ ReactDOM.render(<App />, document.getElementById('root'));
+```
+
+기존 entry 파일은 `bootstrap.js`를 참조하도록 수정합니다.
+
+```diff title="index.js"
++ import('./bootstrap');
+- import React from 'react';
+- import ReactDOM from 'react-dom';
+- import App from './App';
+- ReactDOM.render(<App />, document.getElementById('root'));
+```

@@ -1,0 +1,106 @@
+# experiments
+
+`experiments` 설정은 플러그인의 고급 기능과 실험적 기능을 활성화할 때 사용합니다.
+
+## asyncStartup
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+`asyncStartup`을 활성화하면 모든 Module Federation 진입점(entrypoint)이 기본적으로 비동기 초기화를 수행합니다. 의미는 다음과 같습니다.
+
+- 앱 최상단에서 `import('./bootstrap')` 같은 수동 `import()`를 작성할 필요가 없습니다.
+- 모든 진입점이 비동기 초기화를 자동으로 처리합니다.
+- 자동 비동기 처리로 "eager consumption" 에러를 방지할 수 있습니다.
+
+:::warning
+
+이 모드를 사용하면 모든 진입점이 비동기로 초기화됩니다. 번들된 진입점을 수동으로 require하거나 UMD 라이브러리를 expose하는 경우, export가 resolve되는 Promise로 반환됩니다.
+
+:::
+
+## externalRuntime
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+`true`로 설정하면 `@module-federation/runtime-core`를 외부 의존성으로 취급하고 runtime에서 전역 `_FEDERATION_RUNTIME_CORE`를 읽습니다. consumer가 이 전역 값을 제공해야 하며, 보통 `provideExternalRuntime`과 함께 사용합니다. 제공되지 않으면 동작하지 않습니다.
+
+## provideExternalRuntime
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+순수 consumer 시나리오(`exposes` 없음)에서만 사용합니다. 활성화하면 실행 시 외부 runtime을 제공하기 위해 `@module-federation/inject-external-runtime-core-plugin`을 자동으로 주입합니다.
+
+:::warning 참고
+
+- `exposes`와 함께 사용하면 에러가 발생합니다. 이 옵션은 순수 consumer만 활성화할 수 있습니다.
+- 여러 번 주입되는 것을 피하려면 가장 상위 consumer에서 설정하는 것을 권장합니다.
+
+:::
+
+## optimization
+
+이 객체에는 Module Federation runtime의 크기와 동작에 영향을 줄 수 있는 build-time optimization flags가 들어 있습니다.
+
+### disableSnapshot
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+`true`로 설정하면 빌드 중 `FEDERATION_OPTIMIZE_NO_SNAPSHOT_PLUGIN` 전역 상수를 `true`로 정의합니다. `@module-federation/runtime-core`에서는 이 값으로 인해 `snapshotPlugin()`과 `generatePreloadAssetsPlugin()`이 Module Federation 인스턴스에 포함되거나 초기화되지 않습니다.
+
+**영향:**
+
+- **장점:** 두 플러그인의 코드를 제외해 Module Federation runtime의 전체 번들 크기를 줄일 수 있습니다.
+- **비용:** 두 플러그인이 제공하는 기능을 사용할 수 없습니다. `snapshotPlugin`은 `mf-manifest` 프로토콜에서 중요한 역할을 합니다. exposed modules, shared dependencies, versions, remote에 대한 메타데이터를 담은 build manifest(예: `mf-manifest.json`)를 생성하거나 runtime에서 접근할 수 있게 합니다. 이 플러그인을 비활성화하면 다음 영향이 있습니다.
+  - runtime이 build manifest 데이터에 접근할 수 없습니다.
+  - 동적 remote 탐색, manifest 기반 버전 호환성 확인, 고급 asset preloading(제거되는 `generatePreloadAssetsPlugin`이 담당), runtime debugging/내부 상태 점검 도구처럼 manifest에 의존하는 기능이 올바르게 동작하지 않거나 사용할 수 없게 됩니다.
+  - manifest 기반 기능에 의존하지 않고 runtime 크기 최소화를 우선할 때만 이 옵션을 사용하세요.
+
+:::warning
+**주의:** `disableSnapshot: true`를 설정하면 `mf-manifest` 프로토콜이 비활성화됩니다. 즉 federated 모듈의 TypeScript 동기화 지원과 HMR(Hot Module Replacement)을 사용할 수 없습니다. manifest 기반 remote가 아니라 `.js` remote만 사용한다면, 해당 기능을 원래 지원하지 않으므로 기능 손실은 없습니다.
+:::
+
+### target
+
+- 타입: `'web' | 'node'`
+- 필수: 아니요
+- 기본값: Webpack의 `target` 옵션에서 추론합니다. 보통 `'web'`입니다.
+
+이 옵션은 빌드 중 `ENV_TARGET` 전역 상수를 정의해 의도한 실행 환경을 지정합니다.
+
+**영향:**
+
+- **`target: 'web'`**: 브라우저 환경에 맞게 빌드를 최적화합니다.
+  - 브라우저 전용 remote entry 로딩 메커니즘(`loadEntryDom`)을 사용하게 합니다.
+  - `@module-federation/sdk` 안의 Node.js 전용 코드에 대해 tree-shaking과 dead-code elimination이 적용됩니다. `createScriptNode`, `loadScriptNode`와 이 함수들이 필요로 하는 Node.js 내장 모듈(`vm`, `path`, `http` 등)이 번들에서 제거되어 크기를 크게 줄일 수 있습니다.
+- **`target: 'node'`**: Node.js 환경에 맞게 빌드를 최적화합니다.
+  - Node.js 전용 remote entry 로딩 메커니즘(`loadEntryNode`)을 사용하게 합니다.
+  - SDK의 Node.js 전용 함수(`createScriptNode`, `loadScriptNode`)를 번들에 포함해 federated 애플리케이션이 Node.js에서 올바르게 동작하게 합니다.
+
+특히 universal 또는 서버 사이드 렌더링 시나리오에서는 의도한 최적화가 적용되도록 이 값을 명시적으로 설정하는 것을 권장합니다.
+
+### 최적화 플래그가 `remoteEntry.js` 크기에 미치는 영향
+
+다음 표는 `disableSnapshot`, `target: 'web'`, `externalRuntime` optimization flags 조합에 따라 생성된 `remoteEntry.js` 파일 크기가 어떻게 달라지는지 보여 줍니다. 이 측정값을 참고하면 사용 사례에 맞게 runtime 기능과 번들 크기 사이의 절충점을 선택할 수 있습니다.
+
+| 최적화 플래그                               | remoteEntry.js | Gzip 크기 | Brotli 크기 |
+|---------------------------------------------|:--------------:|:---------:|:-----------:|
+| 최적화 플래그 없음                          | 69K            | 21437 B   | 19024 B     |
+| `disableSnapshot: true`                     | 65K            | 20096 B   | 17860 B     |
+| `target: 'web'`                             | 60K            | 19314 B   | 17105 B     |
+| 둘 다 활성화                                | 56K            | 17998 B   | 15982 B     |
+| 둘 다 활성화 + `externalRuntime: true`      | 14K            | 5381 B    | 4703 B      |
+| 둘 다 비활성화 + `externalRuntime: true`    | 22K            | 8222 B    | 7269 B      |
+
+**참고:**
+
+- `disableSnapshot`과 `target: 'web'`을 함께 활성화하면 번들 크기를 가장 크게 줄일 수 있습니다. `externalRuntime: true`와 함께 사용할 때 효과가 특히 큽니다.
+- 외부 runtime(`externalRuntime: true`)을 사용하면 remote entry 크기를 크게 줄일 수 있지만, consumer가 runtime을 제공해야 합니다.
+- 번들 크기가 작아지면 로드 시간이 빨라지고 성능이 좋아질 수 있습니다. 다만 일부 기능이 비활성화될 수 있으므로 각 플래그의 동작은 위 설명을 확인하세요.

@@ -1,0 +1,410 @@
+---
+title: Observability Plugin
+description: Module Federation 로딩을 관찰하고 runtime/build reports를 수집해, 사람이나 AI 에이전트가 실패 원인을 추적할 수 있게 합니다.
+---
+
+# Observability Plugin
+
+Observability Plugin은 Module Federation 로딩 과정을 observable하게 만듭니다. runtime loading events를 기록하고, 최종 결과를 요약하며, 로딩 실패 시 안정적인 `traceId`를 출력합니다. 또한 runtime failures와 build information을 함께 살펴볼 수 있게 도와줍니다.
+
+이 플러그인은 Module Federation `2.5.0` 이상을 기준으로 설계되었습니다. 더 오래된 MF 버전에서도 runtime error codes는 기본적인 문제 해결에 도움이 되지만, 풍부한 report와 loading observability workflow를 사용하려면 `2.5.0+`로 업그레이드하고 이 플러그인을 활성화해야 합니다.
+
+다음과 같은 질문에 답해야 할 때 사용하세요.
+
+- 이 remote가 성공적으로 로드됐나요?
+- manifest, remoteEntry, init, expose, factory, shared 중 어느 단계에서 실패했나요?
+- runtime fallback 또는 recovery path를 통해 로딩이 복구됐나요?
+- 어떤 shared dependency provider와 버전이 선택됐나요?
+- `preloadRemote`가 실제로 리소스 로딩을 끝냈나요?
+- 사람이나 AI 코딩 에이전트에게 어떤 리포트를 전달해야 하나요?
+
+Shared observability의 범위는 MF 인스턴스 단위입니다. 어떤 MF 인스턴스가 shared dependency를 로드했는지, 등록된 provider/버전 중 무엇이 선택됐는지, 관련 scope, version, eager 설정이 무엇인지 알려 줍니다. 다만 특정 shared dependency와 특정 remote/expose 사이의 인과 관계까지 보장하지는 않습니다. 하나의 흐름에 여러 shared dependencies가 관여한다면 모든 `phase: "shared"` 이벤트를 확인하세요. `summary.shared`에는 마지막으로 관찰된 shared 요약만 들어갑니다.
+
+build plugin이 `customShareInfo`를 제공했지만 등록된 shared provider와 매칭되지 않는 경우가 항상 치명적인 오류는 아닙니다. 리포트가 `summary.outcome: "recovered"`, `summary.phases.shared.status: "complete"`, `shared.reason: "custom-share-info-unmatched"`로 표시된다면 runtime이 복구 가능한 경로로 계속 진행했다는 뜻입니다. 특정 provider/버전이 선택되길 기대했던 경우에만 shared 설정을 더 확인하세요.
+
+Preload observability는 `preloadRemote`가 리소스 로딩을 실제로 완료했는지 알려 줍니다. `preloadRemote`가 끝나면 리포트에는 `phase: "preload"` 리소스 결과가 포함됩니다. 여기에는 리소스 URL, 리소스 타입, status, preload `id`가 들어갑니다. Status는 `success`, `error`, `timeout`, `cached` 중 하나입니다. 호출 시 `exposes`를 지정하지 않으면 `id`는 `remoteName/*`가 됩니다. `exposes`를 지정하면 각 expose가 `remoteName/expose`로 따로 기록됩니다.
+
+먼저 리포트 흐름을 시험해 보거나 페이지에서 직접 리포트를 확인하고 내보내려면 최신 [Module Federation Chrome 확장 프로그램](https://chromewebstore.google.com/detail/module-federation/aeoilchhomapofiopejjlecddfldpeom)을 설치하세요. `Loading Trace` 탭은 페이지 자체의 Observability Plugin에서 리포트를 읽습니다. 페이지에 플러그인이 설치되어 있지 않다면 확장 프로그램이 현재 탭에 대해 임시 수집을 시작할 수도 있습니다. 전체 흐름은 [Chrome DevTools Loading Trace](/guide/debug/chrome-devtool.html#loading-trace)를 참고하세요.
+
+## 설치
+
+```bash
+npm install @module-federation/observability-plugin
+```
+
+## Browser Runtime
+
+browser runtime 코드에서는 기본 entry를 사용합니다.
+
+```ts title="mf-runtime.ts"
+import { createInstance } from '@module-federation/runtime';
+import { ObservabilityPlugin } from '@module-federation/observability-plugin';
+
+export const mf = createInstance({
+  name: 'runtime_host',
+  remotes: [
+    {
+      name: 'remote1',
+      entry: 'https://example.com/mf-manifest.json',
+    },
+  ],
+  plugins: [
+    ObservabilityPlugin({
+      level: 'verbose',
+      browser: {
+        enabled: true,
+        scope: 'runtime_host',
+      },
+    }),
+  ],
+});
+```
+
+Module Federation 로딩이 실패하면 플러그인이 간단한 `console.error` 힌트를 출력합니다.
+
+```text
+[Module Federation] Observability report generated
+traceId: mf-...
+phase: manifest
+errorCode: RUNTIME-003
+read: window.__FEDERATION__.__OBSERVABILITY__["runtime_host"].getReport("mf-...")
+```
+
+전체 리포트를 보려면 브라우저 콘솔에서 `read:` 명령을 실행하세요.
+
+리포트를 직접 읽을 수도 있습니다.
+
+```ts
+window.__FEDERATION__.__OBSERVABILITY__.runtime_host.getLatestReport();
+window.__FEDERATION__.__OBSERVABILITY__.runtime_host.getReport('mf-...');
+window.__FEDERATION__.__OBSERVABILITY__.runtime_host.getReports({ limit: 5 });
+window.__FEDERATION__.__OBSERVABILITY__.runtime_host.findReports({
+  remote: 'remote1',
+});
+window.__FEDERATION__.__OBSERVABILITY__.runtime_host.exportReport('mf-...');
+```
+
+개발 중 로딩 chain을 관찰하고 싶거나, 오류가 출력되기 전에 페이지가 로딩 상태에 머무른다면 browser reader를 활성화하세요. Development browser mode에서는 기본적으로 start log를 출력합니다.
+
+```ts
+ObservabilityPlugin({
+  level: 'verbose',
+  browser: {
+    enabled: true,
+    scope: 'runtime_host',
+  },
+});
+```
+
+플러그인은 `loadRemote` 또는 `loadShare`가 시작될 때만 `console.info`를 출력합니다. 이 로그에는 `traceId`와 리포트를 읽는 명령이 포함됩니다. 에이전트는 이 `traceId`를 사용해 현재 리포트의 `status: "pending"`, `summary.phases`, `updatedAt`, `duration` 등을 확인할 수 있습니다. 개발 브라우저 모드에서 이 로그를 끄려면 `trace.printStart: false`를 설정하세요. 프로덕션 브라우저 모드에서는 시작 로그가 기본적으로 꺼져 있으며, 출력하려면 `trace.printStart: true`를 명시해야 합니다.
+
+## Production Runtime
+
+프로덕션에서는 public browser reader를 기본으로 노출하지 않는 것이 좋습니다. 콘솔 출력은 작게 유지하고, 리포트는 자체 시스템으로 업로드하세요.
+
+```ts title="mf-runtime.ts"
+import { ObservabilityPlugin } from '@module-federation/observability-plugin';
+
+export const observabilityPlugin = ObservabilityPlugin({
+  level: 'summary',
+  browser: {
+    mode: 'production',
+  },
+  onReport(report) {
+    if (report.status === 'error' || report.summary.outcome === 'recovered') {
+      navigator.sendBeacon(
+        '/api/mf-observability',
+        JSON.stringify({
+          traceId: report.traceId,
+          status: report.status,
+          diagnosis: report.diagnosis,
+          summary: report.summary,
+          remote: report.remote,
+          shared: report.shared,
+          moduleInfo: report.moduleInfo,
+        }),
+      );
+    }
+  },
+});
+```
+
+프로덕션 브라우저 모드에서는 콘솔 힌트에 `traceId`와 확인된 `errorCode`만 포함됩니다. 전체 리포트는 `onReport`, `exportReport()` 또는 자체 telemetry backend에서 가져오세요.
+
+## `onReport` 리포트 분석
+
+`onReport`는 리포트가 업데이트될 때마다 호출됩니다. 프로덕션 앱에서 모든 성공 리포트를 저장할 필요는 보통 없습니다. 대신 실패, 복구된 경로, 일부 성공한 로딩 체인을 자체 시스템으로 업로드하기에 적합한 위치입니다.
+
+일반적인 전략은 다음과 같습니다.
+
+- 문제 해결만 필요할 때: `report.status === "error"`와 `report.summary.outcome === "recovered"`만 업로드합니다.
+- shared dependency audit이 필요할 때: 어떤 provider와 버전이 선택됐는지 보기 위해 `report.summary.outcome === "shared-resolved"`도 업로드합니다.
+- 프리로드 결과를 감사할 때: 성공, 실패, timeout, 캐시된 preload 리소스를 집계하려면 `report.summary.outcome === "preloaded"` 또는 실패한 `phase: "preload"` 이벤트도 업로드합니다.
+- 전체 loading observability가 필요할 때: 성공한 `runtime-loaded`, `component-loaded`, `shared-resolved` 리포트를 샘플링합니다.
+
+리포트를 받으면 다음 순서로 읽는 것을 권장합니다.
+
+1. `diagnosis`: 담당자 힌트, 핵심 사실, 다음 조치 제안을 확인합니다.
+2. `summary`: 최종 결과를 확인합니다. `runtime-loaded`는 remote 로딩 성공, `component-loaded`는 비즈니스 코드가 준비 완료를 보고했다는 뜻입니다. `shared-resolved`는 shared provider/버전이 선택됐음을, `preloaded`는 preload 리소스 완료를, `failed`는 로딩 실패를, `recovered`는 runtime이 복구 가능한 경로로 계속 진행했음을 의미합니다.
+3. `remote` / `shared`: 현재 로드 대상입니다. Shared 리포트에서는 `provider`, `requiredVersion`, `selectedVersion`, `availableVersions`를 확인하세요.
+4. `moduleInfo`: 배포 시스템이 제공한 모듈 정보입니다. Snapshot 매칭 문제를 볼 때 유용합니다.
+5. `events`: 순서가 보존된 타임라인입니다. 어느 phase에서 멈췄는지 찾을 때 사용합니다.
+
+예제:
+
+```ts
+ObservabilityPlugin({
+  level: 'summary',
+  browser: {
+    mode: 'production',
+  },
+  onReport(report) {
+    const outcome = report.summary.outcome;
+    const shouldUpload =
+      report.status === 'error' ||
+      outcome === 'recovered' ||
+      outcome === 'shared-resolved' ||
+      outcome === 'preloaded';
+
+    if (!shouldUpload) {
+      return;
+    }
+
+    navigator.sendBeacon(
+      '/api/mf-observability',
+      JSON.stringify({
+        traceId: report.traceId,
+        status: report.status,
+        outcome,
+        diagnosis: report.diagnosis,
+        summary: report.summary,
+        remote: report.remote,
+        shared: report.shared,
+        moduleInfo: report.moduleInfo,
+        events: report.events,
+      }),
+    );
+  },
+});
+```
+
+업로드된 리포트는 AI 코딩 에이전트에게 그대로 전달할 수 있습니다.
+
+```text
+/mf observability
+
+프로덕션에서 업로드된 MF observability report입니다.
+로드가 성공했는지, 어디서 실패했는지, 누가 이슈를 맡아야 할 가능성이 높은지, 어떻게 고치면 되는지 알려 주세요.
+
+<report JSON 붙여넣기>
+```
+
+## Runtime Options
+
+`ObservabilityPlugin(options)`은 다음 runtime options를 지원합니다.
+
+| 옵션 | 타입 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | 플러그인을 켜거나 끕니다. 비활성화된 플러그인은 이벤트를 기록하거나 리포트를 만들지 않습니다. |
+| `level` | `'summary' \| 'verbose'` | `'summary'` | 리포트 상세 수준입니다. `verbose`는 전체 이벤트 타임라인을 보존합니다. |
+| `maxEvents` | `number` | 내장 제한값 | 하나의 플러그인 인스턴스가 유지할 최대 이벤트 수입니다. |
+| `console` | `boolean` | `true` | 로딩 실패 시 짧은 `console.error` 힌트를 출력합니다. |
+| `printRawStack` | `boolean` | `false` | 원본 오류 stack을 콘솔에 출력합니다. 프로덕션에서는 기본적으로 끄는 것을 권장합니다. |
+| `stackTrace.enabled` | `boolean` | `true` | 잘라낸 stack을 리포트에 저장합니다. |
+| `stackTrace.maxLines` | `number` | 내장 제한값 | 리포트에 보관할 최대 stack 줄 수입니다. |
+| `stackTrace.maxLength` | `number` | 내장 제한값 | 리포트에 보관할 최대 stack 문자열 길이입니다. |
+| `collector` | `boolean \| { enabled?: boolean; port?: number }` | `false` | 브라우저 런타임 이벤트를 로컬 collector로 POST합니다. `true`는 `127.0.0.1:17891`을 사용하며 사용자 정의 설정에는 `port`만 필요합니다. 로컬 AI 디버깅 용도이며, 런타임 플러그인이 서버를 시작하지는 않습니다. |
+| `browser.enabled` | `boolean` | `false` | `window.__FEDERATION__.__OBSERVABILITY__`에 브라우저 reader를 노출합니다. |
+| `browser.scope` | `string` | host 이름 | 브라우저 reader 네임스페이스입니다. 예: `runtime_host` |
+| `browser.mode` | `'development' \| 'production'` | `'development'` | 브라우저 출력 모드입니다. 프로덕션 모드는 콘솔 힌트를 최소화합니다. |
+| `trace.printStart` | `boolean` | development 브라우저 모드에서는 `true`, production 브라우저 모드에서는 `false` | `loadRemote` 또는 `loadShare` 시작 시 `console.info`를 출력해 개발 에이전트가 `traceId`를 얻을 수 있게 합니다. 프로덕션 모드에서는 명시적으로 `true`를 설정해야 합니다. |
+| `react.enabled` | `boolean` | `true` | React 전용 디버깅 옵션의 마스터 스위치입니다. 모든 React wrapping을 끄려면 `false`로 설정합니다. |
+| `react.injectLoadedCallback` | `boolean` | `false` | 매칭된 remote React 컴포넌트를 명시적으로 감싸고 `onMFRemoteLoaded`를 주입합니다. 컴포넌트 참조가 바뀌므로 임시 디버깅 옵션으로만 사용하고 문제가 해결되면 제거하세요. |
+| `react.remoteIds` | `string[]` | `[]` | 콜백 주입 대상을 `remote/Button` 또는 `./Button` 같은 특정 remote 요청으로 제한합니다. 비어 있으면 remote filter를 적용하지 않습니다. |
+| `react.defaultExportMode` | `'preserve' \| 'component'` | auto | `{ default: Component }` remote가 래핑된 컴포넌트를 직접 반환할지 제어합니다. 보통 기본값을 유지하세요. |
+| `onEvent` | `(event, report, context) => void` | `undefined` | observability event가 기록될 때마다 호출됩니다. |
+| `onReport` | `(report, context) => void` | `undefined` | 리포트가 업데이트될 때마다 호출됩니다. 프로덕션 앱에서는 보통 여기에서 리포트를 업로드합니다. |
+| `onRawError` | `(error, context) => void` | `undefined` | 자체 오류 시스템과 연동할 수 있도록 원본 오류 객체와 함께 호출됩니다. |
+
+## Node 또는 SSR Runtime
+
+로컬 리포트 파일이 필요하다면 Node entry를 사용하세요.
+
+```ts title="mf-node-runtime.ts"
+import { createInstance } from '@module-federation/runtime';
+import { ObservabilityPlugin } from '@module-federation/observability-plugin/node';
+
+createInstance({
+  name: 'node_host',
+  remotes: [],
+  plugins: [
+    ObservabilityPlugin({
+      level: 'verbose',
+      fileOutput: true,
+      directory: '.mf/observability',
+    }),
+  ],
+});
+```
+
+Node entry는 다음 파일을 씁니다.
+
+- `.mf/observability/latest.json`: 가장 최근의 완전한 리포트
+- `.mf/observability/events.jsonl`: 여러 trace에 대한 이벤트 스트림
+
+먼저 `latest.json`을 읽으세요. 순서 정보나 여러 trace가 필요할 때만 `events.jsonl`을 사용합니다.
+
+## Build Observability
+
+빌드 측 근거를 별도로 남기고 싶다면 Module Federation 빌드 플러그인 옆에 build plugin을 추가하세요.
+
+```js title="webpack.config.js"
+const {
+  ModuleFederationPlugin,
+} = require('@module-federation/enhanced/webpack');
+const {
+  ObservabilityBuildPlugin,
+} = require('@module-federation/observability-plugin/build');
+
+const moduleFederationOptions = {
+  name: 'runtime_host',
+  remotes: {
+    remote1: 'remote1@https://example.com/mf-manifest.json',
+  },
+  exposes: {
+    './Button': './src/Button',
+  },
+  shared: {
+    react: { singleton: true, requiredVersion: '^18.0.0' },
+  },
+};
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin(moduleFederationOptions),
+    new ObservabilityBuildPlugin({
+      moduleFederation: moduleFederationOptions,
+    }),
+  ],
+};
+```
+
+Build observability는 다음 파일을 쓸 수 있습니다.
+
+- `.mf/observability/build-info.json`
+- `.mf/observability/build-report.json`
+
+runtime report에는 이 파일들이 포함되지 않습니다. 디버깅에 build evidence가 필요하다면 build files를 따로 읽고 runtime report와 비교하세요.
+
+## 비즈니스 성공 상태 표시
+
+Module Federation은 remote 모듈이 로드됐는지는 알 수 있습니다. 하지만 비즈니스 컴포넌트가 자체 데이터 로딩, 차트 렌더링, SDK 초기화까지 끝냈는지는 항상 알 수 없습니다.
+
+`react.injectLoadedCallback`을 명시적으로 활성화하면 플러그인이 매칭된 remote React 컴포넌트에 `onMFRemoteLoaded` prop을 주입합니다. Producer는 자체 준비 조건이 충족됐을 때 이 콜백을 호출할 수 있습니다.
+
+```tsx
+import { useEffect } from 'react';
+import type { OnMFRemoteLoaded } from '@module-federation/observability-plugin';
+
+export default function RemotePanel({
+  onMFRemoteLoaded,
+}: {
+  onMFRemoteLoaded?: OnMFRemoteLoaded;
+}) {
+  useEffect(() => {
+    onMFRemoteLoaded?.({
+      metadata: {
+        dataReady: true,
+      },
+    });
+  }, [onMFRemoteLoaded]);
+
+  return <section>Remote panel</section>;
+}
+```
+
+필요한 경우 consumer 측 코드에서 instance method를 직접 호출할 수도 있습니다.
+
+```ts
+import { getInstance } from '@module-federation/runtime';
+import '@module-federation/observability-plugin';
+
+getInstance()?.markComponentLoaded({
+  requestId: 'remote1/Button',
+  componentName: 'Button',
+  metadata: {
+    route: '/dashboard',
+  },
+});
+```
+
+리포트에는 `component:business-loaded`와 `summary.outcome: "component-loaded"`가 포함됩니다.
+
+## React loaded 콜백 주입
+
+개발, AI 디버깅 또는 임시 프로덕션 디버깅을 위해 매칭된 remote React 컴포넌트에 loaded 콜백을 명시적으로 주입할 수 있습니다.
+
+```ts
+ObservabilityPlugin({
+  level: 'verbose',
+  react: {
+    injectLoadedCallback: true,
+    remoteIds: ['remote/Button'],
+  },
+});
+```
+
+활성화하면 플러그인은 `loadRemote` 성공 후 remote React 함수 컴포넌트를 감지하고, DOM 노드를 추가하지 않는 래퍼 컴포넌트로 감쌉니다. 래퍼는 `onMFRemoteLoaded` prop만 주입합니다. React mount, render lifecycle, timeout을 직접 관찰하지는 않습니다. producer가 `props.onMFRemoteLoaded?.()`를 호출하면 리포트에 `component:business-loaded`가 기록됩니다.
+
+`react.injectLoadedCallback`을 활성화했는데도 `summary.componentLoaded`가 `false`라면, 먼저 producer 소스가 실제로 `props.onMFRemoteLoaded?.(...)`를 호출하는지 확인하세요. 호출하지 않는다면 리포트는 remote 리소스가 로드됐다는 사실까지만 증명할 수 있고, 컴포넌트가 producer의 비즈니스 준비 지점에 도달했는지는 증명할 수 없습니다. producer 소스를 볼 수 없다면 producer 담당자에게 콜백이 추가됐는지 확인해 달라고 요청하세요.
+
+이 옵션은 `loadRemote`가 래퍼 컴포넌트를 반환하게 하므로 컴포넌트 참조를 바꿉니다. `remoteIds`로 매칭 범위를 좁게 유지하고, 프로덕션 이슈가 해결되면 이 옵션을 제거하세요.
+
+## `mf` skill과 함께 사용
+
+Skill 설치:
+
+```bash
+npx skills add module-federation/agent-skills --skill mf -y
+```
+
+콘솔에 observability hint가 출력되면 에이전트에게 다음처럼 요청하세요.
+
+```text
+/mf observability
+Module Federation 콘솔 에러를 확인했습니다.
+
+[Module Federation] Observability report generated
+traceId: mf-...
+read: window.__FEDERATION__.__OBSERVABILITY__["runtime_host"].getReport("mf-...")
+
+리포트를 읽고 문제를 수정해 주세요.
+```
+
+Node 또는 SSR 환경이라면 리포트 파일 경로를 전달하세요.
+
+```text
+/mf observability
+.mf/observability/latest.json을 읽고, 누가 이슈를 맡아야 할 가능성이 높은지와 수정 방법을 설명해 주세요.
+```
+
+프로덕션 앱이 리포트를 업로드한다면 업로드된 리포트 또는 `traceId`를 에이전트에게 전달하세요.
+
+```text
+/mf observability
+traceId mf-...에 대해 업로드된 report입니다.
+host, remote, shared, network, build 중 어떤 종류의 이슈인지 알려 주세요.
+```
+
+## AI가 먼저 읽는 항목
+
+이 skill은 다음 순서로 필드를 읽습니다.
+
+1. `diagnosis`
+2. `summary`
+3. `moduleInfo`
+4. `events`
+
+빌드 측 근거가 필요하다면 `.mf/observability/build-info.json` 또는 `.mf/observability/build-report.json`을 별도 파일로 읽습니다.
+
+리포트는 `undefined` 필드를 생략합니다. 특정 필드가 없다면 이 trace에서 관찰되지 않았거나 관련이 없다고 보면 됩니다.

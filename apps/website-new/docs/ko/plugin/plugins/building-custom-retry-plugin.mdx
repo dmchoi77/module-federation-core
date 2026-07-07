@@ -1,0 +1,450 @@
+# 커스텀 재시도 플러그인 만들기
+
+이 가이드는 Module Federation 애플리케이션을 위한 커스텀 재시도 플러그인을 만드는 방법을 설명합니다. 서킷 브레이커 패턴, fallback component, 지능형 오류 처리 같은 고급 기능을 함께 다룹니다.
+
+## 개요
+
+Module Federation으로 분산 애플리케이션을 만들 때는 오프라인 remote를 자연스럽게 처리하는 것이 애플리케이션 안정성에 중요합니다. 커스텀 재시도 플러그인을 사용하면 기본 재시도 메커니즘을 넘어 더 정교한 오류 처리를 구현할 수 있습니다.
+
+## 핵심 기능
+
+견고한 재시도 플러그인은 다음 기능을 포함하는 것이 좋습니다.
+
+- **재시도 로직**: 지수 백오프를 적용한 설정 가능한 재시도 횟수
+- **서킷 브레이커 패턴**: 실패한 remote를 일시적으로 비활성화해 연쇄 장애 방지
+- **fallback component**: Remote를 사용할 수 없을 때 자연스러운 fallback UI 제공
+- **타임아웃 처리**: 끝나지 않는 요청 방지
+- **지능형 상태 관리**: remote 상태와 실패 패턴 추적
+
+## 구현
+
+### 기본 플러그인 구조
+
+```ts
+import type { ModuleFederationRuntimePlugin } from "@module-federation/enhanced/runtime";
+
+interface RetryConfig {
+  enableLogging?: boolean;
+  fallbackTimeout?: number;
+  retryAttempts?: number;
+  retryDelay?: number;
+  enableCircuitBreaker?: boolean;
+  circuitBreakerThreshold?: number;
+  circuitBreakerResetTimeout?: number;
+}
+
+const customRetryPlugin = (config: RetryConfig = {}): ModuleFederationRuntimePlugin => {
+  const {
+    enableLogging = true,
+    fallbackTimeout = 5000,
+    retryAttempts = 2,
+    retryDelay = 1000,
+    enableCircuitBreaker = true,
+    circuitBreakerThreshold = 3,
+    circuitBreakerResetTimeout = 60000,
+  } = config;
+
+  return {
+    name: "custom-retry-plugin",
+    // 구현 세부 사항은 아래에서 다룹니다.
+  };
+};
+```
+
+### 상태 관리
+
+상태 관리 시스템으로 remote 상태를 추적합니다.
+
+```ts
+interface RemoteState {
+  failureCount: number;
+  lastFailureTime: number;
+  isCircuitOpen: boolean;
+}
+
+// 서킷 브레이커 패턴을 위해 remote 상태를 추적합니다.
+const remoteStates = new Map<string, RemoteState>();
+
+const getRemoteState = (remoteId: string): RemoteState => {
+  if (!remoteStates.has(remoteId)) {
+    remoteStates.set(remoteId, {
+      failureCount: 0,
+      lastFailureTime: 0,
+      isCircuitOpen: false,
+    });
+  }
+  return remoteStates.get(remoteId)!;
+};
+
+const updateRemoteState = (remoteId: string, isSuccess: boolean) => {
+  const state = getRemoteState(remoteId);
+
+  if (isSuccess) {
+    // 성공 시 초기화
+    state.failureCount = 0;
+    state.isCircuitOpen = false;
+  } else {
+    // 실패 횟수 증가
+    state.failureCount++;
+    state.lastFailureTime = Date.now();
+
+    // 임계값에 도달하면 서킷 열기
+    if (enableCircuitBreaker && state.failureCount >= circuitBreakerThreshold) {
+      state.isCircuitOpen = true;
+
+      // 타임아웃 이후 서킷 자동 초기화
+      setTimeout(() => {
+        state.isCircuitOpen = false;
+        state.failureCount = 0;
+      }, circuitBreakerResetTimeout);
+    }
+  }
+};
+```
+
+### 타임아웃을 포함한 재시도 로직
+
+타임아웃 보호를 곁들인 지수 백오프를 구현합니다.
+
+```ts
+const withRetry = async <T>(
+  operation: () => Promise<T>,
+  remoteId: string,
+  attempts = retryAttempts
+): Promise<T> => {
+  let lastError: Error;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const result = await Promise.race([
+        operation(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('요청 시간이 초과되었습니다')), fallbackTimeout)
+        )
+      ]);
+
+      // 성공 - 상태 업데이트
+      updateRemoteState(remoteId, true);
+      return result;
+    } catch (error) {
+      lastError = error as Error;
+
+      // 재시도 전 대기(지수 백오프)
+      if (i < attempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay * (i + 1)));
+      }
+    }
+  }
+
+  // 모든 시도 실패
+  updateRemoteState(remoteId, false);
+  throw lastError!;
+};
+```
+
+### 라이프사이클별 오류 처리
+
+실패가 발생한 단계에 따라 서로 다른 오류 타입을 처리합니다.
+
+```ts
+async errorLoadRemote(args) {
+  const { id, error, from, lifecycle } = args;
+  const remoteId = id || from || 'unknown';
+
+  // 라이프사이클에 따른 처리 분기
+  switch (lifecycle) {
+    case 'beforeRequest':
+    case 'afterResolve':
+      // Manifest 로딩 실패
+      const state = getRemoteState(remoteId);
+      if (state.isCircuitOpen) {
+        return createFallbackModule(remoteId, error);
+      }
+
+      try {
+        // 원래 요청 재시도
+        return await withRetry(() => args.origin(), remoteId);
+      } catch (retryError) {
+        return createFallbackModule(remoteId, error);
+      }
+
+    case 'onLoad':
+      // Manifest가 로드된 뒤 모듈 로딩 실패
+      return () => createFallbackModule(remoteId, error);
+
+    case 'beforeLoadShare':
+      // shared dependencies 로딩 실패
+      return createFallbackModule(remoteId, error);
+
+    default:
+      return createFallbackModule(remoteId, error);
+  }
+}
+```
+
+### fallback component
+
+사용자가 상황을 이해하고 다시 시도할 수 있는 fallback UI component를 만듭니다.
+
+```ts
+const createFallbackComponent = (remoteId: string, error?: Error) => {
+  const FallbackComponent = async () => {
+    // eager loading 문제를 피하기 위해 React를 동적으로 import합니다.
+    const React = await import('react');
+
+    // 오류 상세 정보를 안전하게 구성합니다.
+    const errorDetails = error ? [
+      React.createElement("details", { key: "error" }, [
+        React.createElement("summary", { key: "summary" }, "오류 상세"),
+        React.createElement("pre", {
+          key: "error-details",
+          style: {
+            overflow: "auto",
+            fontSize: "12px",
+            textAlign: "left" as const
+          }
+        }, error?.message || String(error))
+      ])
+    ] : null;
+
+    return React.createElement("div", {
+      style: {
+        padding: "16px",
+        margin: "8px",
+        border: "2px dashed #ffa39e",
+        borderRadius: "8px",
+        backgroundColor: "#fff2f0",
+        color: "#cf1322",
+        textAlign: "center" as const,
+      },
+    }, [
+      React.createElement("h3", { key: "title" }, "remote 모듈을 사용할 수 없습니다"),
+      React.createElement("p", { key: "description" },
+        `remote 모듈 "${remoteId}"은 현재 오프라인 상태입니다.`),
+      errorDetails
+    ].filter(Boolean));
+  };
+
+  FallbackComponent.displayName = `FallbackComponent_${remoteId}`;
+  return FallbackComponent;
+};
+
+const createFallbackModule = (remoteId: string, error?: Error) => {
+  try {
+    const FallbackComponent = createFallbackComponent(remoteId, error);
+
+    return {
+      __esModule: true,
+      default: FallbackComponent,
+      [remoteId]: FallbackComponent,
+    };
+  } catch (createError) {
+    // fallback module 생성이 실패하면 최소 모듈을 반환합니다.
+    console.error('fallback module 생성 실패:', createError);
+    return {
+      __esModule: true,
+      default: () => null,
+    };
+  }
+};
+```
+
+## 사용법
+
+### 설정
+
+```ts
+import { init } from '@module-federation/enhanced/runtime';
+import customRetryPlugin from './custom-retry-plugin';
+
+init({
+  name: 'host',
+  remotes: [
+    {
+      name: 'remote1',
+      entry: 'http://localhost:3001/remoteEntry.js'
+    }
+  ],
+  plugins: [
+    customRetryPlugin({
+      enableLogging: true,
+      retryAttempts: 3,
+      retryDelay: 1000,
+      fallbackTimeout: 5000,
+      enableCircuitBreaker: true,
+      circuitBreakerThreshold: 5,
+      circuitBreakerResetTimeout: 30000,
+    })
+  ]
+});
+```
+
+### Share Strategy와의 통합
+
+`shareStrategy`가 remote 로딩에 어떤 영향을 주는지 이해해야 합니다.
+
+```ts
+// version-first 전략은 remotes를 즉시 로드합니다.
+// 앱 시작 중 실패가 발생할 수 있습니다.
+shareStrategy: 'version-first'
+
+// loaded-first 전략은 remotes를 필요할 때 로드합니다.
+// 실제로 모듈을 요청할 때만 실패가 발생합니다.
+shareStrategy: 'loaded-first' // 오프라인 시나리오에 권장
+```
+
+오프라인 시나리오를 자연스럽게 처리해야 하는 애플리케이션이라면 `loaded-first` 전략과 재시도 플러그인을 함께 사용하는 것을 고려하세요.
+
+## 모범 사례
+
+1. **자연스러운 기능 저하**: 의미 있는 fallback UI를 항상 제공하세요.
+2. **서킷 브레이커**: 서킷 브레이커 패턴으로 연쇄 장애를 방지하세요.
+3. **로깅**: 디버깅을 위한 충분한 로그를 포함하세요.
+4. **성능**: fallback module을 캐시해 매번 다시 만들지 않도록 하세요.
+5. **복구**: remotes가 다시 온라인 상태가 되면 자동으로 복구할 수 있게 하세요.
+6. **설정**: 환경별로 재시도 동작을 설정할 수 있게 하세요.
+
+## 전체 예제
+
+다음은 프로덕션에서 사용할 수 있는 재시도 플러그인의 단순화된 버전입니다.
+
+```ts
+import type { ModuleFederationRuntimePlugin } from "@module-federation/enhanced/runtime";
+import type { ComponentType } from "react";
+
+interface OfflineFallbackConfig {
+  enableLogging?: boolean;
+  fallbackTimeout?: number;
+  retryAttempts?: number;
+  retryDelay?: number;
+  enableCircuitBreaker?: boolean;
+  circuitBreakerThreshold?: number;
+  circuitBreakerResetTimeout?: number;
+  fallbackComponents?: Record<string, ComponentType>;
+}
+
+const enhancedOfflineFallbackPlugin = (
+  config: OfflineFallbackConfig = {}
+): ModuleFederationRuntimePlugin => {
+  const {
+    enableLogging = true,
+    fallbackTimeout = 5000,
+    retryAttempts = 2,
+    retryDelay = 1000,
+    enableCircuitBreaker = true,
+    circuitBreakerThreshold = 3,
+    circuitBreakerResetTimeout = 60000,
+    fallbackComponents = {},
+  } = config;
+
+  const remoteStates = new Map<string, any>();
+  const fallbackCache = new Map<string, ComponentType>();
+
+  const log = (message: string, ...args: any[]) => {
+    if (enableLogging) {
+      console.warn(`[OfflineFallbackPlugin] ${message}`, ...args);
+    }
+  };
+
+  const createFallbackComponent = (remoteId: string, error?: Error) => {
+    if (fallbackComponents[remoteId]) {
+      return fallbackComponents[remoteId];
+    }
+
+    const FallbackComponent = async () => {
+      // 즉시 로딩 문제를 피하기 위해 React를 동적으로 import합니다.
+      const React = await import('react');
+
+      return React.createElement("div", {
+        style: {
+          padding: "16px",
+          border: "2px dashed #ffa39e",
+          borderRadius: "8px",
+          backgroundColor: "#fff2f0",
+          color: "#cf1322",
+          textAlign: "center",
+        },
+      }, [
+        React.createElement("h3", { key: "title" }, "remote 모듈을 사용할 수 없습니다"),
+        React.createElement("p", { key: "description" },
+          `remote 모듈 "${remoteId}"은 현재 오프라인 상태입니다.`),
+      ]);
+    };
+
+    return FallbackComponent;
+  };
+
+  return {
+    name: "enhanced-offline-fallback-plugin",
+
+    async errorLoadRemote(args) {
+      const { id, error, lifecycle } = args;
+      log(`Remote 로딩 실패: ${id}`, { lifecycle, error: error?.message });
+
+      switch (lifecycle) {
+        case 'afterResolve':
+          // Manifest 로딩 실패
+          return {
+            id: 'fallback',
+            name: 'fallback',
+            metaData: {},
+            shared: [],
+            remotes: [],
+            exposes: []
+          };
+
+        case 'onLoad':
+          // 모듈 로딩 실패
+          return () => ({
+            __esModule: true,
+            default: createFallbackComponent(id, error),
+          });
+
+        default:
+          return createFallbackComponent(id, error);
+      }
+    },
+
+    onLoad(args) {
+      log(`Remote 로딩 성공: ${args.id}`);
+      return args;
+    },
+  };
+};
+
+export default enhancedOfflineFallbackPlugin;
+```
+
+### Rspack 설정에서 사용하기
+
+```ts
+import { ModuleFederationPlugin } from "@module-federation/enhanced/rspack";
+import enhancedOfflineFallbackPlugin from "./enhanced-offline-fallback-plugin";
+
+export default defineConfig({
+  plugins: [
+    new ModuleFederationPlugin({
+      name: "hostApp",
+      shareStrategy: "loaded-first", // 오프라인 처리에 권장
+      remotes: {
+        "remote-app": "remoteApp@http://localhost:8081/remote-mf-manifest.json",
+      },
+      runtimePlugins: [
+        "./enhanced-offline-fallback-plugin.ts",
+      ],
+    }),
+  ],
+});
+```
+
+## 고급 기능
+
+다음 고급 기능을 추가하는 것도 고려해 볼 수 있습니다.
+
+- **상태 확인**: 서킷 브레이커 복구를 위한 주기적인 상태 확인
+- **fallback source**: 여러 manifest URL에서 로딩 시도
+- **메트릭**: remote 신뢰도에 대한 메트릭 수집
+- **사용자 알림**: 오프라인 remote 상태를 사용자에게 알림
+- **점진적 향상**: 일부 기능만 사용 가능한 상황도 자연스럽게 처리
+
+이 접근을 사용하면 remote 모듈을 사용할 수 없는 상황에서도 좋은 사용자 경험을 유지하면서 견고한 오류 처리를 제공할 수 있습니다.

@@ -1,0 +1,266 @@
+import React from 'react';
+import ShareScopeAlignmentPlayground from '@components/common/ShareScopeAlignmentPlayground';
+
+# shared dependencies 격리: 여러 Share Scope
+
+{props.name || 'Module Federation'}에서 `shared` 의존성은 기본적으로 `default` Share Scope에 등록됩니다. 다음과 같은 상황에서는 하나의 Scope만으로는 부족할 수 있습니다.
+
+* shared dependencies의 일부를 기본 풀에서 분리하고 싶을 때(예: 두 React 생태계를 나란히 실행, 점진적 업그레이드, 마이크로 프론트엔드의 도메인 격리).
+* 같은 패키지를 도메인마다 다른 버전이나 전략으로 사용하되, 각 도메인 안에서는 여전히 공유하고 싶을 때(singleton/reuse는 도메인 안에서 계속 동작).
+
+여러 Share Scope의 핵심은 **shared dependencies의 등록과 해석을 서로 다른 네임스페이스(Scope)로 옮기는 것**입니다. 이렇게 하면 shared pool을 분리하고 정책을 계층화할 수 있습니다.
+
+## 설정 빠른 지도
+
+여러 Share Scope를 이해하는 가장 쉬운 방법은 제공자, 소비자, 각 공유 항목에 무엇을 설정하는지에 집중하는 것입니다. 런타임 내부 자료구조나 변수 이름을 먼저 배울 필요는 없습니다.
+
+* **제공자**: [shareScope](/configure/shareScope.html)로 이 제공자가 초기화할 Share Scope를 선언합니다. 기본값은 `default`이며 `string | string[]`을 지원합니다.
+* **소비자**: [remotes[remote].shareScope](/configure/remotes.html#sharescope)로 소비자가 특정 제공자와 정렬할 Share Scope를 선언합니다. 기본값은 `default`입니다.
+* **공유 항목**: `shared[pkg].shareScope`로 의존성이 어느 풀에 등록되고 해석될지 결정합니다. [shared.shareScope](/configure/shared.html#sharescope)를 참고하세요.
+
+## 조합에 따른 동작
+
+소비자가 제공자를 초기화할 때는 먼저 양쪽의 `shareScope` 설정을 기준으로 Share Scope를 정렬합니다. 그래야 제공자가 어떤 shared pool을 재사용할지 알 수 있습니다. 그 다음 제공자는 자신의 `shareScope`에 따라 shared dependencies를 초기화합니다.
+
+정렬과 초기화 관계를 쉽게 설명하기 위해 다음 용어를 사용합니다.
+
+- **HostShareScope**: 소비자 쪽에서 설정한 `remotes[remote].shareScope`
+- **RemoteShareScope**: 제공자 쪽에서 설정한 `shareScope`
+
+:::warning 참고
+
+`shareScope` / `remotes[remote].shareScope`를 `['default']` 또는 `[]`로 설정하지 마세요.
+
+* **단일 Scope**: 배열이 아니라 문자열을 사용하세요. 두 형태는 shared pool 정렬/초기화에서 서로 다른 내부 분기를 탑니다. 소비자가 배열을 쓰고 제공자가 문자열을 쓰면 제공자는 소비자 목록을 사용해 Scope를 정렬합니다. 제공자가 배열을 쓰면 제공자 목록만 처리합니다.
+* **빈 배열 `[]`**: 어떤 Scope도 초기화되지 않습니다(`default`도 없고 정렬도 없음). 잘못된 설정입니다.
+
+:::
+
+| HostShareScope | RemoteShareScope | shared pool 동작 |
+| --- | --- | --- |
+| `'default'` | `'default'` | `default`가 완전히 공유됩니다. |
+| `['default','scope1']` | `'default'` | `default`만 공유됩니다. `scope1`은 제공자가 초기화하지 않습니다. 여러 Share Scope를 사용하려면 제공자도 그에 맞게 설정해야 합니다. |
+| `'default'` | `['default','scope1']` | `default`는 공유됩니다. 소비자가 `scope1`을 제공하지 않으므로 `scope1`은 `{}`가 되고, 그 아래 의존성은 소비자 쪽에서 재사용할 수 없어 로컬 의존성으로 대체됩니다. |
+| `['scope1','default']` | `['scope1','scope2']` | `scope1`은 공유됩니다. 소비자가 `scope2`를 제공하지 않으므로 `scope2`는 `{}`가 되고, 그 아래 의존성은 소비자 쪽에서 재사용할 수 없습니다. |
+
+:::tip 경험칙
+
+**shared pool은 소비자가 제공하고 제공자가 초기화합니다.** 소비자가 나열하지 않은 Scope는 `{}`로 채워지므로 누락된 Scope 이름 때문에 충돌이 발생하지는 않습니다. 제공자가 나열하지 않은 Scope는 초기화되지 않습니다. shared dependencies가 특정 Scope에서 실제로 재사용되려면 양쪽 모두 그 Scope를 나열해야 합니다.
+
+:::
+
+### 플레이그라운드
+
+{props.shareScopeAlignmentPlayground ||
+  React.createElement(ShareScopeAlignmentPlayground)}
+
+## 빌드 플러그인 설정
+
+### 제공자
+
+```ts title="remote/rspack.config.ts"
+import { ModuleFederationPlugin } from '@module-federation/enhanced/rspack';
+
+export default {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'app_remote',
+      filename: 'remoteEntry.js',
+      exposes: {
+        './Button': './src/Button',
+      },
+      shareScope: ['default', 'scope1'],
+      shared: {
+        react: {
+          singleton: true,
+          requiredVersion: false,
+          shareScope: 'default',
+        },
+        'react-dom': {
+          singleton: true,
+          requiredVersion: false,
+          shareScope: 'default',
+        },
+        '@company/design-system': {
+          singleton: true,
+          requiredVersion: false,
+          shareScope: 'scope1',
+        },
+      },
+    }),
+  ],
+};
+```
+
+핵심 포인트:
+
+* `shareScope: ['default','scope1']`는 제공자의 remoteEntry가 런타임에서 어떤 Scope를 초기화할지 제어합니다.
+* `shared[pkg].shareScope`는 의존성이 어느 Scope에 등록되고 해석될지 결정합니다. `@company/design-system`이 `scope1`에 있으면 `scope1` 풀 안에서만 버전 선택과 재사용에 참여합니다.
+
+### 소비자
+
+```ts title="host/rspack.config.ts"
+import { ModuleFederationPlugin } from '@module-federation/enhanced/rspack';
+
+export default {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'app_host',
+      remotes: {
+        app_remote: {
+          external: 'app_remote@http://localhost:2001/remoteEntry.js',
+          shareScope: ['default', 'scope1'],
+        },
+      },
+    }),
+  ],
+};
+```
+
+핵심 포인트:
+
+* `remotes[remote].shareScope`는 소비자가 제공자를 초기화할 때 어떤 Scope를 정렬할지 제어합니다. 이 값은 `shareScopeKeys`로 제공자에 전달됩니다.
+* 소비자는 여러 Scope로 설정되어 있지만 제공자가 단일 Scope라면 scopeMap은 정렬되지만, 제공자는 자신의 단일 Scope에 대해서만 공유를 초기화합니다(위 조합 표 참고). 여러 풀에서 재사용이 제대로 동작하려면 보통 소비자와 제공자가 같은 Scope에 합의해야 합니다.
+
+## 순수 런타임(런타임 API)
+
+빌드 플러그인으로 제공자와 shared dependencies를 선언하지 않는 경우, 예를 들어 런타임에 동적으로 등록하고 싶다면 런타임 API로도 여러 Share Scope 효과를 낼 수 있습니다. 핵심 API는 두 가지입니다.
+
+* **제공자 등록**: `registerRemotes` 또는 `createInstance({ remotes })`를 사용하고, 각 제공자 설정의 `shareScope: string | string[]`로 정렬할 Share Scope를 선언합니다.
+* **shared dependencies 등록**: `registerShared` 또는 `createInstance({ shared })`를 사용하고, 각 항목의 `scope: string | string[]`로 의존성이 들어갈 Share Scope를 결정합니다.
+
+:::warning 필드 이름 차이
+shared dependencies를 등록할 때의 필드 이름은 `shareScope`가 아니라 **`scope`**입니다. 빌드 플러그인의 `shared[pkg].shareScope`와 다릅니다.
+:::
+
+```ts title="host/runtime.ts"
+import React from 'react';
+import { registerRemotes, registerShared } from '@module-federation/enhanced/runtime';
+
+registerRemotes([
+  {
+    name: 'app_remote',
+    alias: 'remote',
+    entry: 'http://localhost:2001/mf-manifest.json',
+    shareScope: ['default', 'scope1'],
+  },
+]);
+
+registerShared({
+  react: {
+    version: '18.0.0',
+    scope: 'default',
+    lib: () => React,
+    shareConfig: {
+      singleton: true,
+      requiredVersion: '^18.0.0',
+    },
+  },
+  '@company/design-system': {
+    version: '1.2.3',
+    scope: 'scope1',
+    lib: () => require('@company/design-system'),
+    shareConfig: {
+      singleton: true,
+      requiredVersion: false,
+    },
+  },
+});
+```
+
+## Runtime Hook으로 세밀하게 제어하기
+
+여러 Share Scope는 기본적으로 shared pool을 이름별로 그룹화합니다. Scope 선택, 정렬, fallback strategies를 더 세밀하게 제어해야 한다면 runtime hook을 사용해 초기화 단계나 shared dependencies 해석 과정에 개입할 수 있습니다.
+
+### 1. 제공자별 shareScopeKeys 다시 쓰기(beforeInitContainer)
+
+아래 예제는 빌드 시점 또는 런타임 등록 시 다른 shareScope가 설정되었더라도 `legacy_remote`가 항상 `legacy` Scope를 사용하도록 강제합니다.
+
+```ts title="multi-scope-policy-plugin.ts"
+import type { ModuleFederationRuntimePlugin } from '@module-federation/enhanced/runtime';
+
+export function multiScopePolicyPlugin(): ModuleFederationRuntimePlugin {
+  return {
+    name: 'multi-scope-policy',
+    async beforeInitContainer(args) {
+      if (args.remoteInfo.name !== 'legacy_remote') return args;
+
+      const hostShareScopeMap = args.origin.shareScopeMap;
+      if (!hostShareScopeMap.legacy) hostShareScopeMap.legacy = {};
+
+      args.remoteEntryInitOptions.shareScopeKeys = ['legacy'];
+
+      return {
+        ...args,
+        shareScope: hostShareScopeMap.legacy,
+      };
+    },
+  };
+}
+```
+
+### 2. Scope가 없을 때 별칭 또는 fallback 적용하기(initContainerShareScopeMap / resolveShare)
+
+* `initContainerShareScopeMap`: 제공자의 shared pool 초기화 중 각 Scope의 `shareScope` 매핑을 조정합니다.
+* `resolveShare`: `args.resolver`를 교체해 최종 선택 결과를 덮어씁니다. 현재 런타임 구현에서는 `{ ...args, scope: 'default' }`만 반환하는 것으로는 충분하지 않습니다.
+
+예: `scope1`에서 패키지를 찾지 못하면 `default` Scope로 fallback합니다.
+
+```ts title="scope-fallback-plugin.ts"
+import type { ModuleFederationRuntimePlugin } from '@module-federation/enhanced/runtime';
+
+export function scopeFallbackPlugin(): ModuleFederationRuntimePlugin {
+  return {
+    name: 'scope-fallback',
+    resolveShare(args) {
+      const current =
+        args.shareScopeMap[args.scope]?.[args.pkgName]?.[args.version];
+      if (current) return args;
+
+      args.resolver = () => {
+        const fallbackVersionMap = args.shareScopeMap.default?.[args.pkgName];
+        if (!fallbackVersionMap) {
+          return undefined;
+        }
+
+        const fallbackShared =
+          fallbackVersionMap[args.version] ??
+          Object.values(fallbackVersionMap)[0];
+
+        if (!fallbackShared) {
+          return undefined;
+        }
+
+        return {
+          shared: fallbackShared,
+          useTreesShaking: false,
+        };
+      };
+
+      return args;
+    },
+  };
+}
+```
+
+`initContainerShareScopeMap`에서 한 Scope를 다른 Scope의 별칭으로 지정할 수도 있습니다. 이렇게 하면 두 Scope가 같은 풀 객체를 공유합니다.
+
+```ts title="scope-alias-plugin.ts"
+import type { ModuleFederationRuntimePlugin } from '@module-federation/enhanced/runtime';
+
+export function scopeAliasPlugin(): ModuleFederationRuntimePlugin {
+  return {
+    name: 'scope-alias',
+    initContainerShareScopeMap(args) {
+      if (args.scopeName !== 'scope1') return args;
+      if (!args.hostShareScopeMap?.default) return args;
+
+      args.hostShareScopeMap.scope1 = args.hostShareScopeMap.default;
+      return {
+        ...args,
+        shareScope: args.hostShareScopeMap.default,
+      };
+    },
+  };
+}
+```

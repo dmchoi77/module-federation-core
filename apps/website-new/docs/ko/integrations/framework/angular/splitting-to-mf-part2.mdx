@@ -1,0 +1,155 @@
+---
+title: "Monolith 확장하기"
+---
+
+# Module Federation으로 Angular 앱 확장하기: 단계별 가이드
+
+Module Federation(MF)으로 Angular 애플리케이션을 확장하는 시리즈의 두 번째 문서입니다. 이 가이드에서는 기존 일반 Angular 애플리케이션에 MF를 자연스럽게 통합하는 방법을 살펴봅니다.
+
+## 사용할 도구 이해하기: @angular-architects/module-federation
+
+기본적으로 Angular CLI는 사용자 정의 Webpack 설정 로딩을 지원하지 않습니다. 이를 해결하기 위해 Angular CLI builder를 전용 사용자 정의 builder로 교체합니다. 이 변경을 통해 Webpack 설정 파일을 확장할 수 있고, Module Federation 같은 고급 기능을 통합할 수 있습니다.
+
+이 가이드는 `@angular-architects/module-federation` 라이브러리가 제공하는 사용자 정의 builder를 사용하는 데 집중합니다. 필요하고 경험이 충분하다면 다른 builder로 대체할 수도 있습니다. Angular CLI builder 안에서 사용자 정의 Webpack 설정을 구현하는 방법이 궁금하다면 DigitalOcean의 [How To Use Custom webpack Configurations with Angular CLI Builders](https://www.digitalocean.com/community/tutorials/angular-custom-webpack-config)를 참고하세요. 표준 설정을 넘어 Angular 빌드 과정을 커스터마이징하는 데 필요한 실용적인 정보를 얻을 수 있습니다.
+
+### 라이브러리 기능
+
+- **빌드 설정 업데이트**: Webpack 설정 파일을 확장할 수 있게 합니다.
+- **애플리케이션 실행**: 일반 브라우저 접근이나 마이크로 프론트엔드 방식으로 각 애플리케이션을 개별 실행할 수 있게 합니다.
+
+## 메인 앱 설정
+
+### Schematics로 초기화
+
+프로젝트 루트 디렉터리에서 다음 명령을 실행합니다.
+
+```bash
+ng add @angular-architects/module-federation --project app-micro --type dynamic-host --port 4200
+```
+
+이 명령은 메인 프로젝트를 Module Federation에 맞게 설정하고, Angular CLI 설정을 업데이트하며, remote entry를 로드하기 위한 manifest 파일을 생성하고 bootstrap 과정을 재구성합니다.
+
+### Schematic 충돌 처리
+
+`@angular/pwa`, `@angular/material` 같은 일부 Angular schematic은 `main.ts`에서 bootstrap이 일어나기를 기대합니다. 이를 사용할 계획이라면 bootstrap 과정을 잠시 전환하세요.
+
+```bash
+ng g @angular-architects/module-federation:boot-async false --project [YOUR_MAIN_PROJECT]
+ng add [YOUR_LIBRARIES_OF_CHOICE] --project yourProject
+ng g @angular-architects/module-federation:boot-async true --project [YOUR_MAIN_PROJECT]
+```
+
+### Manifest 파일 업데이트
+
+schematic 변경을 적용한 뒤에는 Angular 애플리케이션이 올바르게 동작하도록 manifest 파일(`mf.manifest.json`)과 애플리케이션 라우팅 설정(`app-routing.module.ts`)을 수정해야 합니다.
+
+`mf.manifest.json`의 기본 설정은 `4200` 포트에서 파일을 서빙하도록 되어 있습니다. 하지만 이 포트는 보통 메인 애플리케이션에서 사용합니다.
+
+충돌을 피하려면 보조 애플리케이션을 서빙할 포트를 변경하세요. 예를 들어 포트를 `4201`로 바꿀 수 있습니다. `mf.manifest.json`에는 다음처럼 반영합니다.
+
+```json
+{
+  "login": "http://localhost:4201/remoteEntry.js"
+}
+```
+
+이 설정을 업데이트하면 메인 Angular 애플리케이션과 보조 Angular 애플리케이션을 서로 다른 포트에서 실행하는 명확한 구조를 만들 수 있습니다. 덕분에 각 앱을 독립적으로 실행하면서도 통합할 수 있습니다.
+
+- *단순화한 예시:* 이 가이드에서는 설명을 단순하게 하기 위해 manifest 설정을 JSON 파일에 정적으로 정의합니다.
+
+- *프로덕션의 동적 설정:* 실제 애플리케이션에서는 manifest 설정을 동적으로 제공하는 방식을 권장합니다. 방법은 다음과 같습니다.
+
+   - 정적 JSON 파일을 프로덕션용 파일로 교체합니다.
+   - manifest 설정을 반환하는 endpoint를 서버에 만듭니다.
+
+:::details 참고
+     동적 서빙을 선택했다면 `main.ts` 파일에서 `initFederation` 함수가 manifest 데이터를 가져올 때 사용하는 URL을 수정하세요. 이 설정에서는 인터넷 연결이 없으면 애플리케이션 로드에 실패할 수 있습니다. 반대로 정적 설정을 사용하면, 특히 앱이 이전에 캐싱된 적이 있을 때 연결 오류를 더 쉽게 처리할 수 있습니다.
+:::
+
+4. **라우팅에 manifest 통합하기**:
+
+   *Manifest 파일 수정:*
+
+   - 앞서 설명한 것처럼 필요하면 `mf.manifest.json` 파일의 포트를 조정합니다.
+
+   *애플리케이션 라우팅 업데이트(`app-routing.module.ts`):*
+
+   - 기존 import 코드(예: `import('@@login')`)를 제거합니다.
+   - `@angular-architects/module-federation` 모듈에서 가져온 `loadRemoteModule` 함수를 호출하도록 바꿉니다.
+   - `loadRemoteModule` 함수에 다음 객체를 전달합니다.
+
+```json
+{
+  "type": "manifest",
+  "remoteName": "login",
+  "exposedModule": "./Module",
+}
+```
+
+   - `type`: remote 설정 타입을 나타냅니다. 여기서는 `'manifest'`입니다.
+   - `remoteName`: manifest에 선언된 모듈 이름입니다.
+   - `exposedModule`: 보조 앱 안에서 노출된 모듈의 경로입니다.
+
+   최종 결과는 다음 예시와 비슷합니다.
+
+```typescript
+const routes: Routes = [
+  ...
+  {
+    path: '',
+    canMatch: [isNotLogged],
+    loadChildren: () =>
+      loadRemoteModule({ type: 'manifest', remoteName: 'login', exposedModule: './Module' }).then(
+        (m) => m.LoginModule,
+      ),
+  },
+  ...
+];
+```
+
+여기까지 진행하면 메인 애플리케이션이 다른 애플리케이션을 remote로 로드할 수 있도록 설정됩니다. 다음 단계에서는 보조 애플리케이션이 이 방식으로 로드될 수 있게 설정합니다.
+
+## Remote 앱 설정
+
+보조 애플리케이션을 설정하면 메인 앱과 마찬가지로 여러 프로젝트 구성 요소가 업데이트됩니다. 이 과정에서는 manifest 파일을 만들지는 않지만, `webpack.config.js` 파일을 수정해 메인 애플리케이션 설정보다 더 자세한 내용을 추가합니다.
+
+```bash
+ng add @angular-architects/module-federation --project login --type remote --port 4201
+```
+
+:::tip
+ 여기서는 `--type dynamic-host` 대신 `--type remote`를 사용합니다.
+:::
+
+### `exposes` 이해하기
+
+- *`exposes`의 역할:* `webpack.config.js` 파일의 `exposes` 속성은 중요한 역할을 합니다. 각 key-value 쌍이 route처럼 보이는 객체 설정을 담고 있으며, loader에 노출할 모듈을 지정합니다.
+- *`exposedModule`과의 연결:* 앞에서 route 설정에 사용한 `exposedModule` 속성과 연결됩니다. 어떤 모듈 route를 로드할지 나타내는 값입니다.
+
+### Webpack 설정 조정
+
+*설정 불일치 확인:* 현재 구성에서는 route 설정이 `./Module`이라는 모듈을 로드하려고 하지만, 기존 Webpack 설정에는 이 항목이 지정되어 있지 않습니다.
+
+이를 해결하려면 `webpack.config.js` 파일을 수정합니다.
+
+- 기존 `./Component` key를 제거합니다.
+- 새 `./Module` key를 추가하고, 애플리케이션 모듈을 로드할 올바른 경로를 가리키도록 합니다. 예를 들면 다음과 같습니다.
+
+```javascript
+exposes: {
+  './Module': './projects/login/src/app/feature/login/login.module.ts',
+},
+```
+
+이렇게 수정하면 보조 애플리케이션이 필요한 모듈을 올바르게 노출하고, 메인 애플리케이션에서 요구하는 remote 로딩 조건과 맞아떨어집니다.
+
+## 애플리케이션 테스트와 실행
+
+- **메인 앱 실행**: `ng serve`
+- **보조 앱 실행**: `ng serve login`
+- 두 앱을 모두 실행한 뒤 메인 애플리케이션을 새로고침하면 통합 결과를 확인할 수 있습니다. 이제 보조 앱이 메인 앱 안에서 올바르게 로드되어야 합니다.
+- 브라우저에서 `localhost:4201`로 이동하면 login 애플리케이션이 독립 실행되는 모습도 확인할 수 있습니다.
+
+## 빌드 설정 최적화
+
+현재는 `@angular-architects/module-federation/webpack` 패키지의 `shareAll`을 사용하지만, 더 정교한 방식은 `share` 함수를 사용해 필요한 의존성만 공유하는 것입니다. 이렇게 선택적으로 공유하면 애플리케이션 성능과 리소스 사용을 최적화할 수 있습니다.

@@ -1,0 +1,78 @@
+import {Tabs, Tab} from '@theme'
+
+# Module Federation의 비동기 시작
+
+> Sep 5, 2024
+
+새 실험 기능인 `experiments.asyncStartup = true`를 소개합니다.
+
+이번 릴리스에는 Module Federation 엔트리 포인트를 자동으로 비동기 초기화하는 **비동기 시작** 기능이 추가되었습니다.
+
+## 주요 기능
+
+### 자동 비동기 초기화
+
+비동기 시작을 활성화하면 **애플리케이션 최상단에 동적 import(`import()`)를 직접 둘 필요가 없습니다**. 모든 엔트리 포인트가 기본적으로 비동기 초기화됩니다. 즉, 다음과 같은 효과가 있습니다.
+
+- eager 관련 오류를 줄일 수 있습니다.
+- 사용자 코드에서 별도의 "async boundary"를 만들 필요가 없습니다.
+- 비동기 초기화를 자동으로 처리합니다.
+
+:::note
+이 기능은 엔트리 포인트 초기화 방식에만 영향을 줍니다. 애플리케이션 내부에서는 remote 모듈을 가져올 때를 포함해 동적 import를 그대로 사용할 수 있습니다. 동적 import의 동작을 바꾸거나 제한하지 않습니다.
+:::
+
+:::tip
+**참고:** 비동기 엔트리 포인트는 항상 promise를 export합니다. 번들된 엔트리 포인트를 직접 `require`하거나 UMD 라이브러리처럼 전역 scope에 노출하는 경우 특히 유의하세요.
+:::
+
+#### 변경 전후 비교
+
+새 비동기 동작이 진입점을 어떻게 단순하게 만드는지 비교해 보세요. `변경 전`과 `변경 후` 탭에서 차이를 확인할 수 있습니다.
+
+<Tabs>
+  <Tab label="변경 전">
+    ```jsx
+    // 진입점
+    import('./bootstrap.js')
+
+    // bootstrap.js
+    import React from 'react';
+    import ReactDOM from 'react-dom/client';
+    import App from './App';
+
+    const root = ReactDOM.createRoot(document.getElementById('root')!);
+    root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+    );
+    ```
+  </Tab>
+  <Tab label="변경 후">
+    ```jsx
+    // 진입점
+    import React from 'react';
+    import ReactDOM from 'react-dom/client';
+    import App from './App';
+
+    const root = ReactDOM.createRoot(document.getElementById('root')!);
+    root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+    );
+    ```
+  </Tab>
+</Tabs>
+
+### 알아둘 점
+
+비동기 시작을 사용할 때는 다음을 기억하세요.
+
+- 모든 엔트리 포인트가 기본적으로 비동기 초기화됩니다.
+- 엔트리 포인트의 export는 실제 export로 resolve되는 promise가 됩니다.
+- 별도의 async boundary나 동적 import를 직접 추가할 필요가 없습니다.
+- 비동기 초기화를 통해 eager consumption 오류를 자동으로 피합니다.
+
+이 기능은 federated 모듈의 올바른 초기화는 유지하면서, 수동 비동기 처리에 필요한 코드를 줄여 Module Federation 설정을 단순하게 만듭니다.

@@ -1,0 +1,85 @@
+# Module Federation 소개
+
+### 💡 Module Federation이란?
+
+Module Federation은 여러 JavaScript 애플리케이션을 독립적으로 개발하고 배포하면서, 필요한 코드와 리소스를 서로 공유할 수 있게 해주는 아키텍처 패턴입니다. 백엔드의 마이크로서비스처럼 프론트엔드도 여러 애플리케이션으로 나누어 운영할 수 있으며, 보통 이런 구조를 마이크로 프론트엔드라고 부릅니다.
+
+Module Federation을 사용하면 다음과 같은 효과를 기대할 수 있습니다.
+
+- 코드 중복 줄이기
+- 코드 유지보수성 개선
+- 애플리케이션 전체 번들 크기 줄이기
+- 애플리케이션 성능 향상
+
+### ✨ Module Federation 2.0이란?
+
+`Webpack 5`에 포함된 기존 `Module Federation`은 모듈 노출, 모듈 로딩, 의존성 공유라는 핵심 기능을 제공합니다. `Module Federation 2.0`은 여기에 동적 타입 힌트, `Manifest`, `Federation Runtime`, `Runtime Plugin System`을 더해 대규모 `Web` 애플리케이션에서 마이크로 프론트엔드 아키텍처를 더 안정적으로 구성할 수 있도록 확장한 버전입니다.
+
+### 🔥 기능
+
+Module Federation은 다음 기능을 제공합니다.
+
+- ⚡ 코드 공유와 의존성 재사용
+- 📝 Manifest
+- 🎨 [Module Federation Runtime](/guide/runtime/index.html)
+- 🧩 [Runtime Plugins System](/plugin/dev/index.html)
+- 🚀 [Dynamic type prompt](/guide/basic/type-prompt.html)
+- 🛠️ [Chrome DevTools](/guide/debug/chrome-devtool.html)
+- 🦀 [Rspack](/integrations/bundler/rspack.html) 및 [Webpack](/integrations/bundler/webpack.html) 지원
+
+### 🎯 사용 사례
+
+Module Federation은 다음과 같은 상황에 잘 맞습니다.
+
+- **대규모 애플리케이션**: 하나의 큰 애플리케이션을 여러 마이크로 프론트엔드로 나누고, 각 애플리케이션 사이에서 코드와 리소스를 공유할 수 있습니다.
+- **마이크로 프론트엔드 아키텍처**: 여러 프론트엔드 애플리케이션을 독립적으로 개발, 배포, 통합하는 구조를 만들 수 있습니다.
+- **여러 팀의 협업 개발**: 팀별로 맡은 영역을 분리하면서도 공통 모듈과 의존성을 함께 사용할 수 있습니다.
+
+### 🕠 Module Federation의 역사
+
+Module Federation은 Webpack 5에서 공식 도입된 기능이지만, 그 배경은 2017년까지 거슬러 올라갑니다. 당시 Webpack 팀은 여러 애플리케이션 사이에서 코드를 공유하는 방법을 탐색하기 시작했습니다.
+
+- 2018년에는 Webpack 4.20이 릴리스되며 모듈 훅이 도입되었고, 이는 Module Federation이 발전할 수 있는 기반이 되었습니다.
+
+- 2019년에는 Webpack 5가 릴리스되며 Module Federation 기능이 공식적으로 소개되었습니다.
+
+이후 Module Federation은 현대적인 웹 애플리케이션을 구성하는 강력한 도구로 자리 잡았습니다.
+
+### 🕰️ Module Federation의 미래
+
+Module Federation은 백엔드의 마이크로서비스처럼, 대규모 웹 애플리케이션을 여러 독립 단위로 구성하는 아키텍처 방식으로 발전하고 있습니다. 앞으로도 대규모 웹 애플리케이션의 분산화를 지원하기 위해 다음과 같은 기능을 확장해 나갈 예정입니다.
+
+- 더 완성도 높은 DevTools 제공
+- Router, Sandbox, SSR 같은 고수준 프레임워크 기능 제공
+- Module Federation 기반 대규모 웹 애플리케이션을 위한 모범 사례 제공
+
+## 팔로우하기
+
+- [GitHub - Star us on GitHub](https://github.com/module-federation/core)
+- [Discord](https://discord.com/channels/1055442562959290389/1055442563718467637)
+- [Lark Group (Chinese Community)](https://applink.larkoffice.com/client/chat/chatter/add_by_link?link_token=a41s8f79-741f-41ba-8349-395d9a0e9662)
+
+## ✨ 다음 단계
+
+다음 문서를 이어서 살펴보세요.
+
+import NextSteps from '@components/NextSteps';
+import Step from '@components/Step';
+
+<NextSteps>
+  <Step
+    href="/guide/start/quick-start"
+    title="빠르게 시작하기"
+    description="Module Federation 사용 방법을 알아봅니다"
+  />
+  <Step
+    href="/integrations"
+    title="통합"
+    description="프로젝트에 맞는 패키지를 선택합니다"
+  />
+  <Step
+    href="/configure/index"
+    title="설정 살펴보기"
+    description="Module Federation 설정 방법을 이해합니다"
+  />
+</NextSteps>

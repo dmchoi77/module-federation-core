@@ -1,0 +1,138 @@
+# 프리셋
+
+## 공유
+
+기본적으로 일부 Next.js internals는 애플리케이션 최적화를 위해 자동으로 공유됩니다.
+이미 플러그인이 처리하고 있으므로, 이 internals를 직접 공유하면 오류가 발생할 수 있습니다.
+
+- `next/dynamic`
+- `next/head`
+- `next/link`
+- `next/router`
+- `next/script`
+- `react`
+- `react/`
+- `react-dom`
+- `react-dom/`
+- `styled-jsx`
+- `styled-jsx/style`
+
+<details>
+<summary>`DEFAULT_SHARE_SCOPE` 펼쳐 보기:</summary>
+
+```ts
+export const DEFAULT_SHARE_SCOPE: SharedObject = {
+  'next/dynamic': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/head': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/link': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/router': {
+    requiredVersion: false,
+    singleton: true,
+    import: undefined,
+  },
+  'next/image': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/script': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  react: {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react/': {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react-dom/': {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react-dom': {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react/jsx-dev-runtime': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'react/jsx-runtime': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'styled-jsx': {
+    singleton: true,
+    import: undefined,
+    version: require('styled-jsx/package.json').version,
+    requiredVersion: '^' + require('styled-jsx/package.json').version,
+  },
+  'styled-jsx/style': {
+    singleton: true,
+    import: false,
+    version: require('styled-jsx/package.json').version,
+    requiredVersion: '^' + require('styled-jsx/package.json').version,
+  },
+  'styled-jsx/css': {
+    singleton: true,
+    import: undefined,
+    version: require('styled-jsx/package.json').version,
+    requiredVersion: '^' + require('styled-jsx/package.json').version,
+  },
+};
+```
+</details>
+
+## 페이지 노출
+
+플러그인을 통해 모든 페이지를 자동으로 expose할 수 있습니다.
+
+```javascript
+new NextFederationPlugin({
+  name: 'remoteApp',
+  filename: '',
+  remotes: {},
+  exposes: {},
+  shared: {},
+  extraOptions: {
+    exposePages: true
+  },
+});
+```
+
+이 설정을 사용하면 페이지를 다음처럼 가져올 수 있습니다.
+
+- `import Page from 'remoteApp/pages/index'`
+- `import Page from 'remoteApp/pages/shop/product'`
+
+## 빌드 옵션
+### Public Path
+
+Public Path는 `"auto"`로 설정됩니다.
+
+`config.output.publicPath: "auto"`
+
+### Target
+
+Webpack output target은 `node`에서 `async-node`로 설정됩니다.
+
+`config.target = "async-node"`

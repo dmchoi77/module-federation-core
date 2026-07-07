@@ -1,0 +1,36 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "개요"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "build-tool",
+    "label": "빌드 도구"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "bundler",
+    "label": "번들러"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "documentation",
+    "label": "문서화 솔루션"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "framework",
+    "label": "프레임워크",
+    "collapsible": true,
+    "collapsed": true
+  },
+  {
+    "type": "dir-section-header",
+    "name": "practice",
+    "label": "실습",
+    "collapsible": true,
+    "collapsed": true
+  }
+]

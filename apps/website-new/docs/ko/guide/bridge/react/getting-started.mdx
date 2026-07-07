@@ -1,0 +1,64 @@
+# React Bridge 개요
+
+`@module-federation/bridge-react`는 React 애플리케이션을 위해 설계된 마이크로 프론트엔드 솔루션입니다. 프레임워크를 넘나드는 렌더링과 라우팅 조정을 제공하므로 React 애플리케이션이나 모듈을 독립 애플리케이션처럼 내보내고 불러올 수 있습니다.
+
+## 핵심 기능
+
+### 기본 기능
+
+- **🚀 Application-level Module Export**: `createBridgeComponent`로 완성된 React 애플리케이션을 remote에서 로드할 수 있는 모듈로 감쌉니다.
+- **📦 Application-level Module Loading**: `createRemoteAppComponent`를 통해 host 애플리케이션에 remote React 애플리케이션을 자연스럽게 통합합니다.
+- **🎯 Component-level Lazy Loading**: `createLazyComponent`로 더 세밀한 component-level lazy loading을 지원합니다.
+
+### 기능
+
+- **🔄 Cross-framework Rendering**: React, Vue, Angular 등 서로 다른 프레임워크 사이의 렌더링을 지원합니다.
+- **🛣️ Routing Coordination**: React Router의 basename 주입과 routing context 전달을 자동으로 처리합니다.
+- **🔗 Version Compatibility**: React 16-19를 지원하며, 버전별 렌더링 차이와 lifecycle 차이를 자동으로 처리합니다.
+- **⚡ Data Prefetch**: 내장 resource data prefetch 메커니즘으로 애플리케이션, 컴포넌트, 의존성 prefetch 최적화를 지원합니다.
+
+### 왜 중요한가요?
+
+- **점진적 업그레이드**: 팀마다 각자의 속도로 React 버전을 업그레이드할 수 있습니다.
+- **중단 없는 통합**: 새 애플리케이션과 레거시 애플리케이션이 동시에 업그레이드되지 않아도 함께 동작할 수 있습니다.
+- **기술 부채 관리**: 버전 불일치로 생기는 통합 문제를 줄일 수 있습니다.
+- **팀 자율성**: 각 팀이 자기 상황에 가장 적합한 React 버전을 독립적으로 선택할 수 있습니다.
+
+## 주요 API 개요
+
+### producer API
+
+`createBridgeComponent`는 React 애플리케이션을 Bridge 컴포넌트(애플리케이션 컴포넌트)로 감싸 consumer가 remote에서 로드할 수 있게 합니다. producer 프로젝트에서 사용하는 React 버전에 맞는 import path를 선택하세요.
+
+| React 버전    | Import 경로 |
+| ------------- | ----------- |
+| React 19      | `@module-federation/bridge-react/v19` |
+| React 18      | `@module-federation/bridge-react/v18` |
+| React 16 / 17 | `@module-federation/bridge-react/react` |
+
+:::warning 중요
+
+`@module-federation/bridge-react/v18`와 `/v19`는 `react-dom/client`에서 `createRoot`를 import합니다.
+
+`"react-dom"`만 shared dependencies로 설정하면 `react-dom/client`는 공유되지 않아 React 버전 불일치 에러가 발생할 수 있습니다. 반드시 trailing slash 접두사 형식을 사용하세요.
+
+```ts
+shared: {
+  'react-dom/': {
+    singleton: true,
+  },
+}
+```
+
+:::
+
+### consumer API
+
+| API                        | 설명                                                                                                | Import 경로                             |
+| -------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `createRemoteAppComponent` | host에서 remote Bridge 컴포넌트를 로드하고 렌더링합니다. 렌더링 컨텍스트와 라우터 통합을 자동으로 처리합니다. | `@module-federation/bridge-react/react` |
+| `lazyLoadComponentPlugin`  | prefetch와 lazy-loading을 처리하는 플러그인입니다. | `@module-federation/bridge-react/react` |
+
+### 💡 예제
+
+[완성형 예제](https://github.com/module-federation/core/tree/main/apps/router-demo) - 여러 React 애플리케이션을 포함한 완성형 마이크로 프론트엔드 프로젝트

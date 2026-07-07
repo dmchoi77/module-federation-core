@@ -1,0 +1,307 @@
+# 로딩 애플리케이션
+
+이 문서는 host 애플리케이션에서 `createRemoteAppComponent`를 사용해 remote React 애플리케이션을 로드하고 통합하는 방법을 설명합니다.
+
+## createRemoteAppComponent란 무엇인가요?
+
+`createRemoteAppComponent`는 remote React 애플리케이션을 로드하기 위한 React Bridge의 핵심 API입니다. 다음 기능을 제공합니다.
+
+- **Automatic Lazy Loading**: 필요한 시점에만 remotes를 로드합니다.
+- **Lifecycle Management**: `mount`와 `unmount`를 자동으로 처리합니다.
+- **Router Integration**: React Router와 통합되며 basename 주입을 지원합니다.
+- **Error Handling**: loading/runtime error fallback을 기본으로 지원합니다.
+- **Styling**: wrapper 컴포넌트에 `className`과 `style`을 전달할 수 있습니다.
+
+## 설치
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm install @module-federation/bridge-react@latest',
+    yarn: 'yarn add @module-federation/bridge-react@latest',
+    pnpm: 'pnpm add @module-federation/bridge-react@latest',
+  }}
+/>
+
+## 기본 사용법
+
+### 단계 1: remote 모듈 설정
+
+host 애플리케이션의 Module Federation 설정에 remote를 추가합니다.
+
+:::tip 빌드 도구 지원
+
+아래 예시는 Rsbuild 설정을 사용합니다. 사용하는 빌드 도구에 맞게 조정하세요.
+
+- **Rsbuild**: `@module-federation/rsbuild-plugin`
+- **Rspack**: `@module-federation/enhanced/rspack`
+- **Webpack**: `@module-federation/enhanced/webpack`
+- **Vite**: `@module-federation/vite`
+:::
+
+```ts
+// rsbuild.config.ts
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+import { defineConfig } from '@rsbuild/core';
+
+export default defineConfig({
+  plugins: [
+    pluginModuleFederation({
+      name: 'host-app',
+      remotes: {
+        remote1: 'remote1@http://localhost:3001/remoteEntry.js',
+      },
+    }),
+  ],
+});
+```
+
+:::tip
+remote가 React 18/19 bridge를 사용한다면 `react-dom/client`가 올바르게 공유되도록 `shared` 설정에 trailing-slash prefix 형식(`'react-dom/'`)도 추가하세요.
+:::
+
+### 단계 2: remote 컴포넌트 만들기
+
+#### Loading/Error 컴포넌트 정의
+
+```tsx
+// ./src/components/RemoteComponents.tsx
+import React from 'react';
+
+export const LoadingComponent = () => (
+  <div style={{ padding: '20px', textAlign: 'center' }}>
+    <div>remote 애플리케이션을 로딩 중입니다...</div>
+  </div>
+);
+
+export const ErrorFallback = ({ error }: { error: Error }) => (
+  <div style={{ padding: '20px', border: '1px solid #ff6b6b', borderRadius: '8px' }}>
+    <h3>remote 애플리케이션 로드 실패</h3>
+    <p>오류 상세: {error.message}</p>
+    <button onClick={() => window.location.reload()}>페이지 새로고침</button>
+  </div>
+);
+```
+
+#### remote 애플리케이션 컴포넌트 만들기
+
+```tsx
+// ./src/remotes/Remote1App.tsx
+import { createRemoteAppComponent } from '@module-federation/bridge-react';
+import { loadRemote } from '@module-federation/runtime';
+import { LoadingComponent, ErrorFallback } from '../components/RemoteComponents';
+
+export const Remote1App = createRemoteAppComponent({
+  loader: () => loadRemote('remote1/export-app'),
+  loading: <LoadingComponent />,
+  fallback: ErrorFallback,
+});
+```
+
+#### 메인 애플리케이션 라우터 설정
+
+```tsx
+// ./src/App.tsx
+import React, { useRef } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Remote1App } from './remotes/Remote1App';
+
+const HomePage = () => (
+  <div style={{ padding: '20px' }}>
+    <h1>host 애플리케이션 홈</h1>
+    <p>host 애플리케이션의 홈 콘텐츠입니다.</p>
+  </div>
+);
+
+const App = () => {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route
+          path="/remote1/*"
+          Component={() => (
+            <Remote1App
+              className="remote1"
+              style={{ color: 'red' }}
+              name="Ming"
+              age={12}
+              ref={ref}
+            />
+          )}
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+};
+
+export default App;
+```
+
+## remote 컴포넌트 props
+
+### Router props
+
+- `basename`: remote 애플리케이션의 base path를 설정합니다.
+- `memoryRoute`: Memory router 설정입니다.
+
+### Style props
+
+- `style`: `React.CSSProperties`
+- `className`: `string`
+
+### Ref 지원
+
+- `ref`: `React.Ref<HTMLDivElement>`입니다. 내부 container로 forward됩니다.
+
+### 데이터 전달
+
+- Props를 직접 전달하거나(예: `userId="123"`) `props` 객체를 통해 전달할 수 있습니다.
+
+## createRemoteAppComponent API 참고
+
+### 함수 시그니처
+
+```tsx
+function createRemoteAppComponent<T = Record<string, unknown>, E extends keyof T = keyof T>(
+  config: RemoteComponentParams<T, E>
+): React.ForwardRefExoticComponent<
+  Omit<RemoteComponentProps<T>, "ref"> & React.RefAttributes<HTMLDivElement>
+>
+```
+
+### RemoteComponentParams\<T, E\>
+
+```tsx
+interface RemoteComponentParams<T = Record<string, unknown>, E extends keyof T = keyof T> {
+  loader: () => Promise<T>;
+  loading: React.ReactNode;
+  fallback: React.ComponentType<{ error: Error }>;
+  export?: E;
+  props?: T;
+}
+```
+
+### RemoteComponentProps\<T\>
+
+```tsx
+interface RemoteComponentProps<T = Record<string, unknown>> {
+  props?: T;
+  fallback?: React.ComponentType<{ error: Error }>;
+  loading?: React.ReactNode;
+  basename?: string;
+  memoryRoute?: {
+    entryPath: string;
+    initialState?: Record<string, unknown>;
+  };
+  style?: React.CSSProperties;
+  className?: string;
+  [key: string]: unknown;
+}
+```
+
+### 매개변수 세부 정보
+
+### loader
+
+- 타입: `() => Promise<T>`
+- 필수: Yes
+- 설명: remote 모듈 객체를 로드합니다.
+- 예제:
+  ```tsx
+  loader: () => loadRemote('remote1/export-app')
+  loader: () => import('remote1/export-app')
+  ```
+
+### 로딩
+
+- 타입: `React.ReactNode`
+- 필수: Yes
+- 설명: Remote가 로딩 중일 때 표시할 UI입니다.
+- 예제:
+  ```tsx
+  loading: <div>Loading...</div>
+  loading: 'Loading remote app...'
+  loading: <Spinner />
+  ```
+
+### fallback
+
+- 타입: `React.ComponentType<{ error: Error }>`
+- 필수: Yes
+- 설명: 로딩 또는 렌더링이 실패했을 때 표시할 UI입니다. `error`를 전달받습니다.
+- 예제:
+  ```tsx
+  fallback: ({ error }) => <div>Error: {error.message}</div>
+  fallback: ErrorBoundaryComponent
+  ```
+
+### export
+
+- 타입: `E extends keyof T`
+- 필수: No
+- 기본값: `'default'`
+- 설명: 로드한 remote 모듈에서 어떤 export를 렌더링할지 선택합니다.
+
+예를 들어 remote 모듈이 다음처럼 export한다고 가정합니다.
+
+```tsx
+export default App;
+export const dashboard = Dashboard;
+```
+
+host에서는 다음처럼 사용할 수 있습니다.
+
+```tsx
+createRemoteAppComponent({
+  loader: () => loadRemote('remote1/export-app'),
+})
+
+createRemoteAppComponent({
+  loader: () => loadRemote('remote1/export-app'),
+  export: 'dashboard',
+})
+```
+
+## 번들 크기 최적화
+
+### React Router 의존성
+
+기본적으로 `@module-federation/bridge-react`는 다음 기능을 제공하기 위해 번들에 `react-router-dom`을 포함합니다.
+
+- 자동 basename 주입
+- Router context 전달
+- 중첩 라우팅 지원
+
+React Router 통합이 필요 없거나 다른 router를 사용한다면 `enableBridgeRouter`를 비활성화하세요. 불필요한 router 통합을 제거하고 번들 크기를 약 3KB(gzip 기준) 줄일 수 있습니다.
+
+### Router 의존성 비활성화
+
+```ts title="rsbuild.config.ts"
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+
+export default {
+  plugins: [
+    pluginModuleFederation({
+      name: 'host-app',
+      remotes: {
+        remote1: 'remote1@http://localhost:3001/mf-manifest.json',
+      },
+      bridge: {
+        enableBridgeRouter: false,
+      },
+    }),
+  ],
+};
+```
+
+기본적으로 Bridge는 더 나은 개발 경험과 호환성을 위해 router 지원을 활성화합니다. `enableBridgeRouter: false`로 설정하면 플러그인이 `react-router-dom`을 포함하지 않는 빌드로 자동 전환하여 번들 크기를 줄입니다.
+
+:::info 동작 방식
+
+플러그인은 `@module-federation/bridge-react` import를 `@module-federation/bridge-react/base`로 자동 해석합니다. 이 entry는 `react-router-dom`을 번들에 포함하지 않으므로 코드 변경 없이 적용할 수 있습니다.
+
+:::

@@ -1,0 +1,298 @@
+# Bridge 개요
+
+`Bridge`는 Module Federation이 제공하는 cross-framework application-level 모듈 로딩 및 통합 솔루션입니다. 단순한 컴포넌트 로더가 아니라, "application-level module"을 다루기 위해 설계된 전체 라이프사이클 관리 시스템에 가깝습니다.
+
+Bridge가 해결하는 핵심 문제는 서로 다른 프런트엔드 프레임워크로 만든 완성된 애플리케이션을, 각자의 기술 스택과 비즈니스 구조는 유지한 채 다른 애플리케이션에서 동적으로 로드하고 렌더링하고 통합하는 것입니다. 전통적인 component-level 공유와 달리, Bridge는 라우팅 시스템과 비즈니스 로직을 포함한 완전한 애플리케이션 모듈을 다룹니다.
+
+Bridge를 사용하면 다음을 구현할 수 있습니다.
+
+- **Cross-framework 통합**: React 애플리케이션에서 Vue 애플리케이션을 로드하거나, Vue 애플리케이션에서 React 애플리케이션을 로드할 수 있습니다.
+- **Application-level 모듈화**: 라우팅과 비즈니스 로직을 포함한 완전한 애플리케이션을 모듈로 export하고 consume할 수 있습니다.
+- **Component-level Lazy Loading**: 필요한 시점에 컴포넌트를 세밀하게 로드해 성능을 최적화할 수 있습니다.
+- **Routing System 협업**: 복잡한 nested routing 환경에서도 host와 remote 애플리케이션의 라우팅이 자연스럽게 함께 동작하도록 돕습니다.
+- **Lifecycle Management**: remote 애플리케이션의 mounting, unmounting, updating을 자동으로 처리해 리소스를 안정적으로 관리합니다.
+- **Application Isolation**: 서로 다른 애플리케이션의 styles, scripts, contexts를 격리해 충돌을 줄입니다.
+- **Progressive Migration**: 기존 monolithic 애플리케이션을 단계적으로 마이크로 프론트엔드 구조로 나눌 수 있어 마이그레이션 위험을 낮춥니다.
+
+이런 기능 덕분에 Bridge는 확장 가능한 최신 마이크로 프론트엔드 아키텍처를 구성하는 핵심 기반이 될 수 있습니다.
+
+## 지원 프레임워크
+
+### React Bridge (`@module-federation/bridge-react`)
+
+React 애플리케이션을 위해 설계된 Bridge 툴킷입니다. React 16부터 19까지 지원하며, 주요 React 생태계 도구와 함께 사용할 수 있습니다.
+
+#### 핵심 기능
+
+- **버전 호환성**: React 16.x부터 19.x까지 지원하고, 서로 다른 버전 사이의 호환성 문제를 자동으로 처리합니다.
+- **라우팅 통합**: React Router v5, v6, v7과 통합되며 basename과 nested routing을 자동으로 처리합니다.
+- **프레임워크 격리**: 서로 다른 애플리케이션의 React contexts와 component trees를 분리합니다.
+- **성능 최적화**: lazy loading, code splitting, resource preloading 메커니즘을 기본으로 제공합니다.
+
+#### 핵심 API
+
+**`createBridgeComponent`**
+
+- 목적: React 애플리케이션을 remote에서 로드할 수 있는 모듈로 감쌉니다.
+- 사용 사례: React 애플리케이션을 다른 애플리케이션에서 사용할 수 있는 모듈로 export할 때 사용합니다.
+- 기능: 애플리케이션 라이프사이클, 라우팅 설정, Error Boundaries를 자동으로 처리합니다.
+
+**`createRemoteAppComponent`**
+
+- 목적: host 애플리케이션에서 remote React 애플리케이션을 로드하고 렌더링합니다.
+- 기능: 렌더링 컨텍스트를 만들고 라우팅 통합과 라이프사이클 관리를 처리합니다.
+- 장점: 오류 복구, 로딩 상태 관리, 성능 모니터링을 지원합니다.
+
+**`createLazyComponent`**
+
+- 목적: Component-level lazy loading을 제공합니다. runtime plugins와 함께 사용해야 합니다.
+- 장점: 더 세밀한 로딩 제어와 성능 최적화가 가능합니다.
+- 사용 사례: 큰 컴포넌트 라이브러리나 복잡한 비즈니스 컴포넌트를 온디맨드로 로드할 때 적합합니다.
+
+#### 실습 가이드
+
+- [React 실습](/integrations/practice/react/index.html)
+- [Vue Bridge 실습](/integrations/practice/vue.html)
+
+### Vue Bridge (`@module-federation/bridge-vue3`)
+
+Vue 3 애플리케이션을 위해 설계된 Bridge 툴킷입니다. Vue 3의 최신 기능을 적극적으로 활용합니다.
+
+#### 핵심 기능
+
+- **Vue 3 통합**: Composition API, reactivity system, Teleport 등 Vue 3의 주요 기능을 지원합니다.
+- **라우팅 시스템**: Vue Router 4와 통합되며 dynamic routes와 nested routes를 지원합니다.
+- **애플리케이션 격리**: 서로 다른 애플리케이션의 Vue instances와 reactivity systems를 분리합니다.
+- **TypeScript 지원**: TypeScript 타입 정의와 추론을 제공합니다.
+- **개발 경험**: Vue DevTools와 hot module replacement를 지원합니다.
+
+#### 핵심 API
+
+**`createBridgeComponent`**
+
+- 목적: Vue 3 애플리케이션을 remote에서 로드할 수 있는 모듈로 감쌉니다.
+- 지원 범위: plugin system과 custom directives를 포함한 Vue 3 생태계 통합을 지원합니다.
+- 기능: 애플리케이션 instance 생성, mounting, destruction을 자동으로 처리합니다.
+
+**`createRemoteAppComponent`**
+
+- 목적: Vue 애플리케이션에서 다른 프레임워크의 애플리케이션 모듈을 로드합니다.
+- 기능: Vue 3의 Composition API와 애플리케이션 instance 관리를 자동으로 처리합니다.
+- 장점: cross-framework DOM rendering과 이벤트 처리를 지원합니다.
+
+## 자주 묻는 질문
+
+### 왜 Bridge?
+
+Bridge는 최신 프런트엔드 개발에서 자주 마주치는 몇 가지 문제를 해결합니다.
+
+1. **기술 스택 다양성 관리**
+   - 큰 조직에서는 팀마다 서로 다른 프런트엔드 프레임워크를 사용하는 경우가 많습니다.
+   - Bridge를 사용하면 팀은 독립적으로 개발하면서도 애플리케이션 간 상호 운용성을 유지할 수 있습니다.
+   - 기술 스택을 억지로 통일할 때 생기는 마이그레이션 비용과 개발 효율 저하를 피할 수 있습니다.
+
+2. **Application-level 모듈화**
+   - 기존 Module Federation은 주로 component-level 공유를 다뤘습니다.
+   - Bridge는 완전한 비즈니스 로직과 사용자 경험을 포함한 application-level 모듈화를 지원합니다.
+   - 더 큰 단위로 나누되 관리하기 쉬운 마이크로 프론트엔드 아키텍처를 만들 수 있습니다.
+
+3. **라우팅 시스템 협업**
+   - 복잡한 라우팅을 가진 애플리케이션 모듈을 로드할 수 있습니다.
+   - host와 remote 애플리케이션의 라우팅이 함께 동작하도록 보장합니다.
+   - nested routes, dynamic routes, route guards 같은 고급 기능을 지원합니다.
+
+4. **점진적 아키텍처 전환**
+   - 기존 monolithic 애플리케이션을 마이크로 프론트엔드 구조로 단계적으로 나눌 수 있습니다.
+   - 대규모 리팩터링의 위험과 비용을 낮춥니다.
+   - 부드러운 마이그레이션 경로를 제공합니다.
+
+### Bridge와 기존 컴포넌트 공유 비교
+
+| 항목          | 기존 컴포넌트 공유     | Bridge 애플리케이션 공유 |
+| ------------- | ---------------------- | ------------------------ |
+| 분리 단위     | Component level        | Application level        |
+| 라우팅        | 지원하지 않음          | 전체 지원                |
+| 애플리케이션 격리 | 제한적 지원            | 완전한 격리              |
+| 비즈니스 단위 | 조각난 단위            | 완전한 비즈니스 단위     |
+| 개발 독립성   | 중간                   | 높음                     |
+| 배포 전략     | host에 의존            | 독립 배포                |
+
+### Component-level 로딩 자세히 보기
+
+Bridge는 application-level 모듈화뿐 아니라 `createLazyComponent` API를 통한 component-level lazy loading도 지원합니다. 이를 통해 더 세밀하게 로딩을 제어할 수 있습니다.
+
+#### 사용 사례
+
+**1. 큰 컴포넌트 라이브러리**
+
+- 복잡한 비즈니스 컴포넌트를 온디맨드로 로드해 초기 번들 크기를 줄입니다.
+- component-level 버전 관리와 독립 업데이트를 지원합니다.
+- 디자인 시스템이나 공유 컴포넌트 라이브러리에 적합합니다.
+
+**2. 조건부 기능 모듈**
+
+- 사용자 권한이나 비즈니스 조건에 따라 기능 모듈을 동적으로 로드합니다.
+- A/B testing과 feature flags를 지원합니다.
+- core 애플리케이션의 복잡도를 줄일 수 있습니다.
+
+**3. 성능 최적화**
+
+- 중요하지 않은 경로의 컴포넌트 로딩을 지연합니다.
+- preloading과 지능형 caching 전략을 지원합니다.
+- Intersection Observer와 함께 사용해 viewport 기반 로딩을 구현할 수 있습니다.
+
+#### 핵심 기능
+
+- **Data Prefetching**: component-level data prefetching으로 컴포넌트 로드 시점에 필요한 데이터를 미리 준비할 수 있습니다.
+- **Error Boundaries**: 내장 오류 처리 메커니즘으로 컴포넌트 로딩 실패가 메인 애플리케이션에 영향을 주지 않게 합니다.
+- **Loading States**: custom loading indicators를 포함한 풍부한 로딩 상태 관리를 지원합니다.
+- **Caching Mechanism**: 로드된 컴포넌트를 caching해 중복 네트워크 요청을 피합니다.
+- **타입 안전성**: TypeScript 지원을 통해 컴포넌트 인터페이스의 타입 안전성을 확보합니다.
+
+#### Application-level 로딩과 함께 사용하기
+
+Component-level 로딩과 application-level 로딩은 함께 사용할 수 있습니다.
+
+```tsx
+import { getInstance } from '@module-federation/runtime';
+import { lazyLoadComponentPlugin } from '@module-federation/bridge-react/data-fetch';
+
+// Application-level loading: 완전한 remote application을 로드합니다.
+const RemoteApp = createRemoteAppComponent({
+  loader: () => import('remote/app'),
+  fallback: <AppSkeleton />,
+});
+
+const instance = getInstance();
+instance.registerPlugins([lazyLoadComponentPlugin()]);
+
+// Component-level loading: remote application 내부에서 컴포넌트를 온디맨드로 로드합니다.
+const LazyComponent = instance.createLazyComponent({
+  loader: () => import('remote/heavy-component'),
+  loading: <ComponentSkeleton />,
+  fallback: ({ error }) => <ErrorBoundary error={error} />,
+});
+```
+
+이 계층형 로딩 전략을 사용하면 다음이 가능합니다.
+
+- 큰 단위에서는 애플리케이션 간 결합도를 낮추고 독립 배포를 유지합니다.
+- 작은 단위에서는 성능과 사용자 경험을 세밀하게 최적화합니다.
+- 비즈니스 요구에 맞춰 적절한 로딩 단위를 유연하게 선택합니다.
+
+### 성능 고려사항
+
+**로딩 성능**
+
+- Bridge는 application-level lazy loading과 preloading을 지원합니다.
+- 리소스 caching과 버전 관리 메커니즘을 제공합니다.
+- progressive loading 전략을 사용할 수 있습니다.
+
+**런타임 성능**
+
+- 프레임워크 격리를 통해 서로 다른 애플리케이션이 서로의 실행에 영향을 주지 않게 합니다.
+- application-level 성능 모니터링과 최적화를 지원합니다.
+- 메모리 관리와 리소스 정리를 자동화합니다.
+
+**네트워크 최적화**
+
+- 리소스 공유와 중복 제거를 지원합니다.
+- CDN에 적합한 리소스 로딩 전략을 제공합니다.
+- offline caching과 server-side rendering을 지원합니다.
+
+### 다른 프레임워크로 확장하려면?
+
+현재 Module Federation은 React와 Vue 3용 Bridge 구현을 공식 제공합니다. 다른 프레임워크 지원이 필요하다면 다음 방법을 고려하세요.
+
+1. **요구사항 제안**: [GitHub Issues](https://github.com/module-federation/core/issues)에 필요한 내용을 알려 주세요.
+2. **기존 구현 참고**: 기존 [Bridge 구현](https://github.com/module-federation/core/blob/main/packages/bridge/bridge-react)을 살펴보면 개발 방식을 이해하는 데 도움이 됩니다.
+3. **코드 기여**: 새로운 프레임워크 지원을 커뮤니티에 기여할 수 있습니다.
+
+### Bridge 구현 원리
+
+Bridge의 핵심 아이디어는 단순합니다. DOM 기반 렌더링 추상화입니다. 아래는 단순화한 구현 원리입니다.
+
+#### Export 측 (Remote Application)
+
+```tsx
+export default function createProvider() {
+  const rootMap = new Map<HTMLElement, ReactDOM.Root>();
+
+  return {
+    // 지정한 DOM 노드에 애플리케이션을 렌더링합니다.
+    render(info: {
+      dom: HTMLElement;
+      basename?: string;
+      memoryRoute?: { entryPath: string };
+    }) {
+      const root = ReactDOM.createRoot(info.dom);
+      rootMap.set(info.dom, root);
+
+      root.render(
+        <BrowserRouter basename={info.basename}>
+          <App />
+        </BrowserRouter>,
+      );
+    },
+
+    // 리소스를 정리합니다.
+    destroy(info: { dom: HTMLElement }) {
+      const root = rootMap.get(info.dom);
+      root?.unmount();
+      rootMap.delete(info.dom);
+    },
+  };
+}
+```
+
+#### Consumer 측 (Host Application)
+
+```tsx
+const RemoteApp = React.lazy(async () => {
+  // Remote module을 로드합니다.
+  const module = await loadRemote('remote1/export-app');
+  const provider = module.default;
+
+  return {
+    default: () => {
+      const containerRef = useRef<HTMLDivElement>(null);
+      const providerRef = useRef<any>(null);
+
+      useEffect(() => {
+        if (containerRef.current) {
+          // Provider instance를 생성합니다.
+          const instance = provider();
+          providerRef.current = instance;
+
+          // Remote application을 렌더링합니다.
+          instance.render({
+            dom: containerRef.current,
+            basename: '/remote-app',
+          });
+        }
+
+        // 정리 함수
+        return () => {
+          if (providerRef.current && containerRef.current) {
+            providerRef.current.destroy({
+              dom: containerRef.current,
+            });
+          }
+        };
+      }, []);
+
+      return <div ref={containerRef} />;
+    },
+  };
+});
+
+function App() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <RemoteApp />
+    </Suspense>
+  );
+}
+```
+
+이 패턴을 통해 Bridge는 프레임워크에 의존하지 않는 application-level 모듈 로딩을 구현하고, 마이크로 프론트엔드 아키텍처를 위한 안정적인 기술 기반을 제공합니다.

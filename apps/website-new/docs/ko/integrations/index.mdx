@@ -1,0 +1,29 @@
+# 통합
+
+Module Federation은 MF 런타임을 기반으로 동작합니다. 대부분의 프로젝트는 빌드 플러그인을 사용하는 것이 좋습니다. 빌드 플러그인을 사용하면 remote 모듈을 npm 패키지처럼 `import`할 수 있고, 타입 힌트 같은 개발 편의 기능도 함께 사용할 수 있습니다.
+
+다른 애플리케이션에서 소비할 모듈을 노출해야 한다면 빌드 플러그인이 필요합니다. 반대로 빌드 설정을 바꾸지 않고 런타임에서 remote 모듈만 불러오면 되는 경우에는 런타임 API만 사용할 수도 있습니다.
+
+어떤 패키지를 설치해야 할지 모르겠다면 먼저 프로젝트 유형을 기준으로 선택하세요.
+
+| 프로젝트 유형 | 설치할 패키지 | 다음 문서 |
+| --- | --- | --- |
+| Rsbuild 앱 | `@module-federation/rsbuild-plugin` | [Rsbuild](/integrations/build-tool/rsbuild.html) |
+| Rslib 모듈 | `@module-federation/rsbuild-plugin` | [Rslib](/integrations/build-tool/rslib.html) |
+| Vite 앱 | `@module-federation/vite` | [Vite](/integrations/build-tool/vite.html) |
+| Rspack 앱 | `@module-federation/enhanced` | [Rspack](/integrations/bundler/rspack.html) |
+| Webpack 앱 | `@module-federation/enhanced` | [Webpack](/integrations/bundler/webpack.html) |
+| React Native / Metro | `@module-federation/metro`와 사용하는 Metro 플러그인 | [Metro](/integrations/bundler/metro.html) |
+| Rspress 사이트 | `@module-federation/rspress-plugin` | [Rspress](/integrations/documentation/rspress.html) |
+| Modern.js 앱 | `@module-federation/modern-js-v3`(Modern.js v3 권장) 또는 `@module-federation/modern-js`(Modern.js v2) | [Modern.js](/integrations/framework/modernjs/index.html) |
+| Next.js 앱 | `@module-federation/nextjs-mf`와 `webpack` | [Next.js](/integrations/framework/nextjs/index.html) |
+| Angular 앱 | Angular 빌드 환경에 맞는 통합 패키지 | [Angular](/integrations/framework/angular/index.html) |
+| 모노레포 | 앱 프레임워크와 모노레포 도구에 맞는 패키지 | [모노레포](/integrations/framework/monorepos/index.html) |
+
+remote 모듈을 불러오기만 한다면 런타임만 사용할 수도 있습니다. 프로젝트 유형에 따라 런타임을 import하는 entry가 다르므로, 올바른 entry를 고르려면 [Runtime 설치](/guide/runtime/index.html#installation)를 참고하세요.
+
+## 다음 단계
+
+- 먼저 프로젝트 유형에 맞는 통합 문서를 선택한 뒤, 패키지 설치와 플러그인 설정을 완료하세요.
+- React, Vue처럼 프레임워크별 사용 예시가 필요하다면 [실습 가이드](/integrations/practice/index.html)를 이어서 보세요.
+- shared config, 런타임, 디버깅 같은 공통 개념은 [Guide](/guide/start/index.html)에서 확인할 수 있습니다.

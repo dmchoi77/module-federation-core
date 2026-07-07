@@ -1,0 +1,52 @@
+# manifest
+
+- 타입: `boolean | PluginManifestOptions`
+- 필수: 아니요
+- 기본값: `undefined`
+
+플러그인이 manifest artifact를 생성할지, 그리고 어떻게 생성할지를 제어합니다. 활성화하면 플러그인은 매 빌드마다 <code>{props.manifest || 'mf-manifest.json' }</code>와 <code>{props.stats || 'mf-stats.json' }</code>를 생성합니다. 파일명은 `fileName`으로 바꿀 수 있으며, 다른 도구가 `processAssets` 또는 최종 빌드 출력에서 직접 사용할 수 있습니다.
+
+- <code>{props.stats || 'mf-stats.json'}</code>: 전체 빌드 통계를 담습니다. exposes/공유/remotes의 asset, `metaData`(플러그인 버전, 빌드 정보, `remoteEntry` 등), 추가 asset 분석이 포함됩니다. 디버깅이나 여러 환경의 stats 병합에 적합합니다. 필드 레퍼런스는 [{props.stats || 'mf-stats.json'}](/guide/advanced/stats-fields.html)를 참고하세요.
+- <code>{props.manifest || 'mf-manifest.json'}</code>: stats에서 추출한 runtime 중심 manifest입니다. {props.brandName  || 'Module Federation'} consumer가 remote 모듈을 로드할 때 읽는 안정적인 구조를 유지합니다. exposes/공유/remotes entry는 consumer가 실제로 사용할 수 있는 항목을 설명합니다. 필드 레퍼런스는 [{props.manifest || 'mf-manifest.json'}](/guide/advanced/manifest-fields.html)를 참고하세요.
+
+`PluginManifestOptions` 타입은 다음과 같습니다.
+
+```ts
+interface PluginManifestOptions {
+  filePath?: string;
+  disableAssetsAnalyze?: boolean;
+  fileName?: string;
+}
+```
+
+## filePath
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `undefined`
+
+manifest 파일 경로입니다.
+
+## fileName
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `'mf-manifest.json'`
+
+manifest 파일 이름입니다.
+
+`fileName`을 제공하면 함께 생성되는 stats 파일에는 자동으로 `-stats` suffix가 붙습니다. 예를 들어 `fileName: 'mf.json'`이면 `mf.json`과 `mf-stats.json`이 함께 생성됩니다. `filePath` 옵션을 설정했다면 생성된 파일은 해당 경로 아래에 기록됩니다.
+
+## disableAssetsAnalyze
+
+:::warning
+이 설정은 권장하지 않습니다. 설정하면 preload 기능이 비활성화됩니다.
+:::
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `undefined`
+
+복잡한 프로젝트에서는 asset 분석에 시간이 오래 걸릴 수 있습니다. 이 옵션을 `true`로 설정하면 asset 분석이 비활성화되어 빌드 시간을 줄일 수 있습니다.
+프로젝트가 순수 consumer 중심이라면 dev에서는 기본적으로 `true`로 설정됩니다.
+`true`로 설정하면 manifest에 `shared`와 `exposes` 필드가 포함되지 않고, `remotes`에도 `assets`가 포함되지 않습니다.

@@ -1,0 +1,41 @@
+# Zephyr Cloud로 배포하기
+
+[Zephyr Cloud](https://zephyr-cloud.io)는 빌드 과정에 바로 통합되는 zero-config 배포 플랫폼입니다. Module Federation 애플리케이션을 global edge network에 배포할 수 있습니다.
+
+#### 배포 방법
+
+1. 사용하는 bundler에 맞는 Zephyr 플러그인을 설치합니다. Webpack, Rspack, Vite 등을 지원합니다.
+
+import InstallKit from '@docs/_snippets/install-kit';
+
+<InstallKit
+  pkgName="zephyr-Webpack-플러그인"
+/>
+
+2. Webpack 설정에 플러그인을 추가합니다.
+
+```javascript title='webpack.config.js'
+import { withZephyr } from 'zephyr-webpack-plugin';
+const {
+  ModuleFederationPlugin,
+} = require('@module-federation/enhanced/webpack');
+const mfConfig = require('./module-federation.config');
+
+module.exports = withZephyr()({
+  devServer: {
+    port: 2000,
+  },
+  output: {
+    publicPath: 'http://localhost:2000/',
+  },
+  plugins: [new ModuleFederationPlugin(mfConfig)],
+});
+```
+
+3. 평소처럼 프로젝트를 빌드합니다.
+
+```bash
+npm run build
+```
+
+빌드 과정에서 Module Federation 애플리케이션이 Zephyr의 전역 edge network에 자동으로 배포되고, 배포 URL을 받을 수 있습니다. Zephyr Cloud는 asset 최적화, 의존성 resolution, 자동 롤백을 처리해 마이크로 프론트엔드 애플리케이션 운영을 돕습니다.

@@ -1,0 +1,294 @@
+# Lazy Load and Prefetch Components
+
+이 문서는 host 애플리케이션에서 `createLazyComponent`를 사용해 remote React 컴포넌트를 온디맨드로 로드하는 방법을 설명합니다.
+
+`createLazyComponent`는 React 컴포넌트 시나리오를 위한 상위 수준 로딩 API입니다. remote 모듈을 직접 로드한 뒤 `React.lazy`, `Suspense`, error boundary를 손으로 연결하는 대신, 이 API가 필요한 구성을 함께 제공합니다. 추가로 다음 기능을 사용할 수 있습니다.
+
+- **Declarative loading and fallback**: `React.Suspense`와 error boundaries를 직접 감싸지 않아도 됩니다.
+- **Data prefetching**: `prefetch`로 컴포넌트 로드 전에 의존성 요청을 시작해, 컴포넌트가 준비된 뒤에야 데이터 요청이 시작되는 waterfalls를 줄일 수 있습니다.
+- **SSR 제어**: remote 컴포넌트를 서버에서 렌더링할지 세밀하게 제어해 CSS 깜박임 문제를 줄일 수 있습니다.
+
+## 설치
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm install @module-federation/bridge-react@latest',
+    yarn: 'yarn add @module-federation/bridge-react@latest',
+    pnpm: 'pnpm add @module-federation/bridge-react@latest',
+  }}
+/>
+
+## 기본 사용법
+
+### 단계 1: lazyLoadComponentPlugin 등록
+
+런타임에 `lazyLoadComponentPlugin` 플러그인을 등록하면 `createLazyComponent`와 `prefetch` API를 사용할 수 있습니다.
+
+```tsx
+import { getInstance } from '@module-federation/runtime';
+import { lazyLoadComponentPlugin } from '@module-federation/bridge-react/data-fetch';
+
+const instance = getInstance();
+// lazyLoadComponentPlugin을 등록합니다.
+instance.registerPlugins([lazyLoadComponentPlugin()]);
+```
+
+### 단계 2: createLazyComponent 호출
+
+`lazyLoadComponentPlugin` 플러그인을 등록한 뒤에는 `instance.createLazyComponent` 메서드로 lazy-loaded 컴포넌트를 만들 수 있습니다.
+
+```tsx
+import { getInstance } from '@module-federation/runtime';
+import { lazyLoadComponentPlugin } from '@module-federation/bridge-react/data-fetch';
+
+const instance = getInstance();
+// lazyLoadComponentPlugin 등록 후 `createLazyComponent`와 `prefetch` API를 사용할 수 있습니다.
+instance.registerPlugins([lazyLoadComponentPlugin()]);
+
+// instance.prefetch로 remote module data prefetching을 실행합니다.
+instance.prefetch({
+  id: 'dynamic_remote'
+});
+
+// instance.createLazyComponent로 remote modules를 lazy loading합니다.
+const LazyComponent = instance.createLazyComponent({
+  loader: () => loadRemote('dynamic_remote'),
+  loading: 'loading...',
+  fallback: ({ error }) => {
+    if (error instanceof Error && error.message.includes('not exist')) {
+      return <div>fallback - not existed id</div>;
+    }
+    return <div>fallback</div>;
+  },
+});
+```
+
+## createLazyComponent API 참고
+
+### 함수 시그니처
+
+```tsx
+function createLazyComponent<T, E extends keyof T>(
+  options: CreateLazyComponentOptions<T, E>
+): React.ComponentType<ComponentProps>
+```
+
+### createLazyComponent
+
+> 이 API를 호출하려면 먼저 [lazyLoadComponentPlugin 플러그인을 등록](#step-1-register-lazyloadcomponentplugin)해야 합니다.
+
+import Collapse from '@components/Collapse'
+
+<Collapse>
+```ts
+declare function createLazyComponent(
+  props: CreateLazyComponentOptions
+): (props: ComponentType) => React.JSX.Element;
+
+type CreateLazyComponentOptions<T, E extends keyof T> = {
+  loader: () => Promise<T>;
+  loading: React.ReactNode;
+  delayLoading?: number;
+  fallback: ReactNode | ((errorInfo: ErrorInfo) => ReactNode);
+  export?: E;
+  dataFetchParams?: DataFetchParams;
+  noSSR?: boolean;
+  injectScript?: boolean;
+  injectLink?: boolean;
+};
+
+type ComponentType = T[E] extends (...args: any) => any
+  ? Parameters<T[E]>[0] extends undefined
+    ? Record<string, never>
+    : Parameters<T[E]>[0]
+  : Record<string, never>;
+
+type DataFetchParams = {
+  isDowngrade: boolean;
+} & Record<string, unknown>;
+
+type ErrorInfo = {
+  error: Error;
+  errorType: number;
+  dataFetchMapKey?: string;
+};
+```
+</Collapse>
+
+이 함수는 컴포넌트 로딩뿐 아니라 다음 기능도 지원합니다.
+
+1. SSR 모드에서 해당 producer의 style 태그와 script 리소스를 주입합니다. 스트리밍 렌더링으로 인한 CSS 깜박임을 줄이고 FPIT(First Paint Interactive Time)를 앞당기는 데 도움이 됩니다.
+2. producer에 data fetching function이 있으면 자동으로 호출하고 데이터를 주입합니다.
+
+```tsx
+import React, { FC, memo, useEffect } from 'react';
+import { getInstance } from '@module-federation/enhanced/runtime';
+import { ERROR_TYPE } from '@module-federation/bridge-react/data-fetch';
+
+const instance = getInstance();
+const LazyComponent = instance.createLazyComponent({
+  loader: () => import('remote/Image'),
+  loading: <div>loading...</div>,
+  fallback: ({error,errorType,dataFetchMapKey}) => {
+    console.error(error)
+    if(errorType === ERROR_TYPE.LOAD_REMOTE){
+      return <div>load remote failed</div>
+    }
+    if(errorType === ERROR_TYPE.DATA_FETCH){
+      return <div>data fetch failed, the dataFetchMapKey key is: {dataFetchMapKey}</div>
+    }
+    return <div>error type is unknown</div>;
+  },
+});
+
+const App: FC = () => {
+  return <>
+    <LazyComponent />
+  </>;
+};
+export default App;
+```
+
+#### loader
+
+- 타입: `() => Promise<T>`
+- 필수: Yes
+- 기본값: `undefined`
+
+remote 컴포넌트를 로드하는 함수입니다. 보통 `()=>loadRemote(id)` 또는 `()=>import(id)` 형태로 작성합니다.
+
+#### 로딩
+
+- 타입: `React.ReactNode`
+- 필수: Yes
+- 기본값: `undefined`
+
+모듈 로딩 중에 표시할 상태를 설정합니다.
+
+#### delayLoading
+
+- 타입: `number`
+- 필수: No
+- 기본값: `undefined`
+
+로딩 상태를 표시하기 전의 지연 시간을 밀리초 단위로 설정합니다. 실제 로딩 시간이 이 값보다 짧으면 로딩 상태를 표시하지 않습니다.
+
+#### fallback
+
+- 타입: `(({ error }: { error: ErrorInfo}) => React.ReactElement)`
+- 필수: Yes
+- 기본값: `undefined`
+
+컴포넌트 **로딩** 또는 **렌더링**이 실패했을 때 렌더링할 error 컴포넌트입니다.
+
+#### export
+
+- 타입: `string`
+- 필수: No
+- 기본값: `'default'`
+
+remote 컴포넌트가 named export라면 이 매개변수로 렌더링할 export 이름을 지정할 수 있습니다. 기본적으로는 default export를 로드합니다.
+
+#### dataFetchParams
+
+- 타입: `DataFetchParams`
+- 필수: No
+- 기본값: `undefined`
+
+remote 컴포넌트에 data fetching function이 있다면, 이 값이 해당 함수로 전달됩니다.
+
+#### noSSR
+
+- 타입: `boolean`
+- 필수: No
+- 기본값: `false`
+
+`true`로 설정하면 이 컴포넌트는 SSR 환경에서 렌더링되지 않습니다.
+
+#### injectScript
+
+- 타입: `boolean`
+- 필수: No
+- 기본값: `false`
+
+SSR 환경에서 `true`로 설정하면 생성된 컴포넌트가 대응되는 script 리소스를 주입합니다.
+
+예를 들어 `remote/button`에 `__federation_button.js`가 있다면, SSR이 반환하는 HTML에서 컴포넌트 앞에 해당 script가 주입되어 상호작용 가능 시점을 앞당길 수 있습니다.
+
+```html
+<script async src="__federation_button.js" crossOrigin="anonymous"/>
+<button>remote button</button>
+```
+
+#### injectLink
+
+- 타입: `boolean`
+- 필수: No
+- 기본값: `true`
+
+SSR 환경에서 `true`로 설정하면 생성된 컴포넌트가 대응되는 style 리소스 link를 주입합니다.
+
+예를 들어 `remote/button`에 `__federation_button.css`가 있다면, SSR이 반환하는 HTML에서 컴포넌트 앞에 해당 link가 주입되어 페이지 flickering을 줄일 수 있습니다.
+
+```html
+<link href="__federation_button.css" rel="stylesheet" type="text/css">
+<button>remote button</button>
+```
+
+### prefetch
+
+> 이 API를 호출하려면 먼저 [lazyLoadComponentPlugin 플러그인을 등록](#step-1-register-lazyloadcomponentplugin)해야 합니다.
+
+<Collapse>
+```ts
+type PrefetchOptions = {
+  id: string;
+  dataFetchParams?: DataFetchParams;
+  preloadComponentResource?: boolean;
+};
+type DataFetchParams = {
+  isDowngrade: boolean;
+  _id?: string;
+} & Record<string, unknown>;
+```
+</Collapse>
+
+컴포넌트 리소스 파일과 컴포넌트의 data loader를 미리 로드합니다.
+
+```ts
+import React, { FC, memo, useEffect } from 'react';
+import { getInstance } from '@module-federation/enhanced/runtime';
+
+const instance = getInstance();
+
+instance.prefetch({
+  id: 'remote/Image',
+  preloadComponentResource: true,
+});
+```
+
+#### id
+
+- 타입: `string`
+- 필수: Yes
+- 기본값: `undefined`
+
+미리 로드할 컴포넌트의 id입니다.
+
+#### preloadComponentResource
+
+- 타입: `boolean`
+- 필수: No
+- 기본값: `false`
+
+컴포넌트의 리소스 파일을 함께 미리 로드할지 설정합니다.
+
+#### dataFetchParams
+
+- 타입: `DataFetchParams`
+- 필수: No
+- 기본값: `undefined`
+
+remote 컴포넌트에 data fetching function이 있다면, 이 값이 해당 함수로 전달됩니다.

@@ -1,0 +1,14 @@
+[
+  "shared-tree-shaking",
+  "multiple-shared-scope",
+  {
+    "type": "file",
+    "name": "manifest-fields",
+    "label": "Manifest 필드 참조"
+  },
+  {
+    "type": "file",
+    "name": "stats-fields",
+    "label": "Stats 필드 참조"
+  }
+]

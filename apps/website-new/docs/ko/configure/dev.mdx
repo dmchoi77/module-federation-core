@@ -1,0 +1,40 @@
+# dev
+
+- 타입: `boolean | PluginDevOptions`
+- 필수: 아니요
+- 기본값: `true`
+- 사용 시나리오: `Module Federation` dev 동작을 제어합니다.
+
+`PluginDevOptions` 타입은 다음과 같습니다.
+
+```ts
+interface PluginDevOptions {
+  disableLiveReload?: boolean;
+  disableHotTypesReload?: boolean;
+  disableDynamicRemoteTypeHints?: boolean;
+}
+```
+
+## disableHotTypesReload
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+타입 hot reload를 비활성화할지 여부입니다.
+
+## disableLiveReload
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+`liveReload`를 비활성화할지 여부입니다. `true`로 설정하면 producer에서 업데이트가 발생해도 consumer **페이지**의 `liveReload`가 트리거되지 않습니다.
+
+## disableDynamicRemoteTypeHints
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+타입 핫 리로드를 비활성화할지 여부입니다.

@@ -1,0 +1,526 @@
+import ErrorCodeTitle from '@components/ErrorCodeTitle';
+import EnableAsyncEntry from '@docs/ko/_components/EnableAsyncEntry';
+import Runtime from '@docs/ko/_components/runtime/index';
+import { Tab, Tabs } from '@theme';
+
+# 런타임
+
+이 페이지는 런타임 관련 에러 코드와 자주 쓰는 문제 해결 가이드를 모아 둔 문서입니다.
+
+## 에러 코드
+
+- [RUNTIME-001](#runtime-001)
+- [RUNTIME-002](#runtime-002)
+- [RUNTIME-003](#runtime-003)
+- [RUNTIME-004](#runtime-004)
+- [RUNTIME-005](#runtime-005)
+- [RUNTIME-006](#runtime-006)
+- [RUNTIME-007](#runtime-007)
+- [RUNTIME-008](#runtime-008)
+- [RUNTIME-009](#runtime-009)
+- [RUNTIME-010](#runtime-010)
+- [RUNTIME-012](#runtime-012)
+- [RUNTIME-013](#runtime-013)
+- [RUNTIME-014](#runtime-014)
+- [RUNTIME-015](#runtime-015)
+
+## RUNTIME-001
+
+<ErrorCodeTitle code='RUNTIME-001'/>
+
+### 원인
+
+producer entry 파일이 정상적으로 로드되면 producer는 전역 객체(`globalThis`/`window`)에 등록됩니다. 이후 `window[remoteEntryKey]`로 접근할 수 있습니다.
+
+하지만 로딩 과정에서 등록된 producer에 접근할 수 없는 경우가 있습니다. 이 에러의 대표적인 원인은 다음 네 가지입니다.
+
+1. `remoteEntryUrl`이 올바르지 않습니다.
+2. `remoteEntry` 파일이 컨테이너를 올바르게 마운트하지 못했습니다.
+3. 네트워크 문제로 리소스에 접근할 수 없습니다.
+4. remote 타입이 다른 형식이지만 플러그인 또는 `init`의 remotes 설정에 명시되지 않았습니다.
+
+### 해결 방법
+
+원인에 따라 다음을 확인하세요.
+
+1. `remoteEntryUrl`이 올바른지 확인합니다.
+  - manifest를 사용한다면 manifest의 `publicPath`와 `remoteEntry.name` 필드를 확인합니다.
+2. 프로젝트 빌더가 Rspack이라면 최종 빌드 설정에 [runtimeChunk](https://rspack.dev/config/optimization#optimizationruntimechunk)가 있는지 확인합니다. 설정되어 있다면 제거하세요.
+3. 리소스가 외부에서 접근 가능한지 확인합니다.
+4. non-ESM host에서 ESM remote를 불러오는 경우:
+  - remote 설정에 `type: 'module'`을 지정합니다.
+
+### 더 자세한 에러 정보 확인하기
+
+`window[remoteEntryKey]`가 존재하지 않는다는 점, 즉 script가 컨테이너 등록에 실패했다는 점은 확인했지만 콘솔에 명확한 에러가 없다면 producer의 script가 cross-origin 리소스일 수 있습니다. 브라우저는 기본적으로 cross-origin script의 자세한 에러 정보를 숨깁니다. 이 경우 `filename`, `lineno`, `message`가 모두 비어 있을 수 있습니다.
+
+producer 서버에 `Access-Control-Allow-Origin`이 설정되어 있다면 [`createScript`](/plugin/dev/index.html#createscript) hook을 통해 script에 `crossorigin` 속성을 추가할 수 있습니다.
+
+먼저 런타임 플러그인 파일을 만듭니다.
+
+```ts title="script-crossorigin-plugin.ts"
+import { ModuleFederationRuntimePlugin } from '@module-federation/runtime/types';
+
+export default function MFScriptPlugin(): ModuleFederationRuntimePlugin {
+  return {
+    name: 'script-crossorigin-plugin',
+    createScript({ url }) {
+      const script = document.createElement('script');
+      script.src = url;
+      script.crossOrigin = 'anonymous';
+      return script;
+    },
+    // 프로젝트에서 preloadRemote를 사용한다면 createLink도 구현해
+    // crossorigin 설정을 일관되게 유지하세요. 그렇지 않으면 preload(no-cors)와
+    // 실제 로드(cors)의 캐시 키가 달라져 preload가 낭비됩니다.
+    createLink({ url, attrs }) {
+      const link = document.createElement('link');
+      link.setAttribute('href', url);
+      link.setAttribute('crossorigin', 'anonymous');
+      if (attrs) {
+        Object.entries(attrs).forEach(([key, value]) => {
+          if (key !== 'crossorigin') {
+            link.setAttribute(key, String(value));
+          }
+        });
+      }
+      return link;
+    },
+  };
+}
+```
+
+그다음 플러그인을 등록합니다.
+
+<Tabs>
+  <Tab label="빌드 플러그인">
+
+빌드 설정의 `runtimePlugins` 필드를 통해 등록합니다.
+
+```ts title="rspack.config.ts"
+const path = require('path');
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'host',
+      remotes: { /* ... */ },
+      runtimePlugins: [
+        path.resolve(__dirname, './script-crossorigin-plugin.ts'),
+      ],
+    }),
+  ],
+};
+```
+
+  </Tab>
+  <Tab label="Runtime API">
+
+`init` API의 `plugins` 필드를 통해 등록합니다.
+
+```ts title="index.ts"
+import { init } from '@module-federation/runtime';
+import MFScriptPlugin from './script-crossorigin-plugin';
+
+init({
+  name: 'host',
+  remotes: [/* ... */],
+  plugins: [MFScriptPlugin()],
+});
+```
+
+  </Tab>
+</Tabs>
+
+추가한 뒤에는 cross-origin script에서 발생한 런타임 예외에 전체 `filename`, `lineno`, `message`가 포함되어 구체적인 오류 위치를 찾기 쉬워집니다.
+
+
+:::warning
+
+* 이 플러그인을 추가한 뒤에는 **모든 producer**의 빌드 설정에서 `output.crossOriginLoading`을 `'anonymous'`로 설정해야 합니다. 그렇지 않으면 프리로딩이 동작하지 않습니다.
+
+```js
+// webpack.config.js / rspack.config.js (producer 측)
+module.exports = {
+  output: {
+    crossOriginLoading: 'anonymous',
+  },
+};
+```
+
+* 서버에 CORS 헤더가 설정되어 있지 않다면 `crossorigin` 속성을 추가했을 때 오히려 script 로드가 실패할 수 있습니다(네트워크 오류). 이 방식을 사용하기 전에 서버 설정이 올바른지 확인하세요.
+
+:::
+
+## RUNTIME-002
+
+<ErrorCodeTitle code='RUNTIME-002'/>
+
+### 원인
+
+producer 컨테이너의 `init` 함수를 가져올 수 없습니다.
+
+정상적인 producer 컨테이너는 `{ get, init }`을 export합니다. 이번 로드에서는 `init`이 `undefined`라 오류가 발생합니다.
+
+### 해결 방법
+
+다음 순서로 확인하세요.
+
+1. producer를 로드하기 전에 브라우저 콘솔에서 `window[remoteEntryKey]`를 실행해 이 객체가 이미 점유되어 있는지 확인합니다. 점유되어 있다면 producer [name](/configure/name.html#name)을 변경하세요.
+2. 프로젝트 빌더가 Rspack이라면 최종 빌드 설정에 [runtimeChunk](https://rspack.dev/config/optimization#optimizationruntimechunk)가 설정되어 있는지 확인합니다. 설정되어 있다면 제거하세요.
+
+## RUNTIME-003
+
+<ErrorCodeTitle code='RUNTIME-003'/>
+
+### 원인
+
+manifest 로드에 실패했습니다.
+
+### 해결 방법
+
+1. manifestUrl에 정상적으로 접근할 수 있는지 확인합니다.
+2. manifestUrl에 cross-origin 문제가 있는지 확인합니다.
+
+## RUNTIME-004
+
+<ErrorCodeTitle code='RUNTIME-004'/>
+
+### 원인
+
+일치하는 remote 모듈을 찾지 못했습니다. 이 오류는 다음 이유로 발생할 수 있습니다.
+
+1. consumer에 producer 정보가 등록되어 있지 않습니다.
+2. requestId가 잘못된 alias 또는 name을 사용합니다.
+3. `beforeRequest` hook이 등록되어 있지만 올바른 데이터를 반환하지 않습니다.
+
+### 해결 방법
+
+1. 이 요청에 대한 producer 정보가 consumer에 등록되어 있는지 확인합니다.
+2. 등록된 producer 정보(name/alias)가 requestId와 일치하는지 비교합니다.
+3. `beforeRequest` hook이 등록되어 있는지 확인하고, 해당 런타임 플러그인을 수정합니다.
+
+## RUNTIME-005
+
+<ErrorCodeTitle code='RUNTIME-005'/>
+
+### 원인
+
+shared config을 적용하면 해당 의존 라이브러리는 비동기 모듈로 판단됩니다. 비동기 entry를 활성화하지 않았고 `eager: true`도 설정하지 않았다면 이 오류가 발생합니다.
+
+### 해결 방법
+
+다음 둘 중 하나를 선택하세요.
+
+1. 비동기 entry 활성화
+
+<EnableAsyncEntry />
+
+2. shared config에 `eager: true` 지정
+
+## RUNTIME-006
+
+<ErrorCodeTitle code='RUNTIME-006'/>
+
+### 원인
+
+현재 shared dependencies가 로드되지 않아 `loadShareSync`를 사용할 수 없습니다.
+
+### 해결 방법
+
+다음 둘 중 하나를 선택하세요.
+
+1. `loadShareSync` 대신 `loadShare`를 사용합니다.
+2. 현재 shared dependencies에 [lib](/guide/runtime/runtime-api.html#loadshare) 함수를 제공합니다.
+
+## RUNTIME-007
+
+<ErrorCodeTitle code='RUNTIME-007'/>
+
+### 원인
+
+remote entry가 리소스 URL이 아니라 버전 번호로 설정되어 있고, 배포 플랫폼이 올바른 데이터를 전달하지 못했습니다.
+
+### 해결 방법
+
+globalSnapshot에 `${moduleName}:${moduleInfo.version}` 키를 가진 객체가 있는지 확인합니다. 없다면 배포 플랫폼의 데이터 전달 파이프라인에 문제가 있는지 확인하세요.
+
+## RUNTIME-008
+
+<ErrorCodeTitle code='RUNTIME-008'/>
+
+### 원인
+
+remote entry script 로드에 실패했습니다. 오류 메시지에는 구체적인 실패 이유가 포함되며, 크게 두 범주로 나뉩니다.
+
+**1. ScriptNetworkError — 네트워크 계층 실패**
+
+script 파일을 내려받지 못했습니다. 일반적인 원인은 다음과 같습니다.
+
+- 잘못된 리소스 URL(서버가 404 반환)
+- 네트워크 불안정 또는 요청 시간 초과
+- Cross-origin(CORS) 설정 오류
+- CDN 노드 사용 불가
+
+**2. ScriptExecutionError — script 실행 중 런타임 오류**
+
+script 파일 다운로드는 성공했지만, 실행 중 IIFE에서 런타임 예외가 발생했습니다. 오류 메시지에는 `ScriptExecutionError`와 원본 예외(예: `TypeError: ...`)가 함께 포함됩니다. 일반적인 원인은 다음과 같습니다.
+
+- producer 코드에 호환되지 않는 문법이 있습니다(예: 지원되지 않는 브라우저 API).
+- producer entry가 올바르게 초기화되지 않은 전역 변수에 의존합니다.
+- 빌드 output이 손상되었거나 불완전합니다.
+
+### 해결 방법
+
+**ScriptNetworkError일 때:**
+
+1. 오류 메시지의 리소스 URL을 브라우저에서 직접 열어 접근 가능한지 확인합니다.
+2. producer의 `publicPath`와 `remoteEntry` 주소 설정을 확인합니다.
+3. CORS 문제가 있는지 확인합니다. 필요하다면 서버에 CORS를 설정하거나 [`createScript`](/plugin/dev/index.html#createscript) hook으로 `crossOrigin` 속성을 추가합니다.
+4. 네트워크가 불안정하다면 재시도 메커니즘을 추가합니다. [Runtime retry](/plugin/plugins/retry-plugin.html)를 참고하세요.
+
+**ScriptExecutionError일 때:**
+
+1. 오류 메시지의 원본 예외(`TypeError`, `SyntaxError` 등)를 확인해 producer entry 파일에서 구체적인 오류 위치를 찾습니다.
+2. producer의 빌드 target이 consumer의 브라우저 지원 범위와 호환되는지 확인합니다.
+3. 브라우저 DevTools Network 패널에서 remote entry 파일을 내려받아 직접 실행해 오류를 재현합니다.
+
+:::tip
+`ScriptExecutionError`는 script 다운로드는 성공했다는 뜻입니다. retry로는 이 유형의 오류가 해결되지 않습니다. 먼저 producer 코드의 호환성 문제나 런타임 오류를 조사하세요.
+:::
+
+### 더 자세한 오류 정보 얻기
+
+**v2.3.0** 이전 버전에서는 RUNTIME-008 오류 메시지에 구체적인 예외 정보가 포함되지 않을 수 있습니다. 오류 메시지가 충분히 자세하지 않다면 「[RUNTIME-001 더 자세한 오류 정보 얻기](#getting-more-detailed-error-information)」를 참고해 `crossorigin` 속성을 추가하고 전체 오류 스택을 가져오세요.
+
+## RUNTIME-009
+
+<ErrorCodeTitle code='RUNTIME-009'/>
+
+### 원인
+
+빌드 플러그인을 사용하지 않고 런타임 API를 직접 호출했습니다.
+
+### 해결 방법
+
+<Runtime />
+
+## RUNTIME-010
+
+<ErrorCodeTitle code='RUNTIME-010'/>
+
+### 원인
+
+`initOptions`가 초기화 때 사용한 값과 다른 `name`으로 호출되었습니다. `name`은 인스턴스의 고유 식별자이며 초기화 후에는 변경할 수 없습니다.
+
+### 해결 방법
+
+- 다른 `name`을 가진 인스턴스가 필요하다면 기존 인스턴스를 수정하지 말고 `createInstance` API로 새 인스턴스를 만드세요.
+- `name` 변경이 필요하지 않다면 `initOptions` 호출에서 `name` 필드를 생략하거나, 초기화 때 사용한 값과 동일하게 유지하세요.
+
+## RUNTIME-012
+
+<ErrorCodeTitle code='RUNTIME-012'/>
+
+### 원인
+
+shared modules를 로드할 때 로컬 `getter`가 함수가 아닙니다. `undefined`이거나 함수가 아닌 다른 타입입니다.
+
+`loadShare`가 `false`를 반환하면 remote가 shared modules를 제공하지 않았다는 뜻입니다. 이때 런타임은 로컬 `getter`로 대체해 모듈을 해결하려고 합니다. 이 시점에 `getter`가 함수가 아니라면 remote와 로컬 fallback path 모두 모듈을 제공할 수 없으므로 이 오류가 발생합니다.
+
+**가장 흔한 원인**: 애플리케이션 중 하나에서 shared modules에 `import: false`가 설정되어 있습니다. 이 설정은 번들러에게 해당 모듈을 로컬에 포함하지 말라고 지시합니다. 이 경우 host 앱이 `lib` 함수를 통해 모듈을 **반드시** 제공해야 합니다. 제공하는 host가 없다면 fallback path에서 호출할 대상이 없습니다.
+
+### 해결 방법
+
+1. **`shared.import` 설정 확인**
+
+   어떤 애플리케이션에서든 이 shared modules에 `import: false`를 설정했다면, host가 대응되는 `lib` 함수를 반드시 제공해야 합니다. 예시는 다음과 같습니다.
+
+   ```ts title="host/webpack.config.ts"
+   new ModuleFederationPlugin({
+     name: 'host',
+     shared: {
+       react: {
+         singleton: true,
+         lib: () => require('react'), // host가 lib를 제공해야 합니다.
+       },
+     },
+   });
+   ```
+
+2. **`import: false` 제거**
+
+   이 최적화가 필요 없다면 `import: false`를 제거하고 번들러가 의존성을 자동으로 처리하게 둡니다.
+
+3. **shared module name과 버전 범위 확인**
+
+   host와 모든 remote 사이에서 shared module name과 버전 범위가 일관적인지 확인하세요. 그래야 일치하는 항목을 찾을 수 있고, 빈 `getter`로 대체되는 상황을 피할 수 있습니다.
+
+## RUNTIME-013
+
+<ErrorCodeTitle code='RUNTIME-013'/>
+
+### 원인
+
+manifest에 접근하고 JSON으로 파싱할 수는 있지만, 유효한 Module Federation manifest가 아닙니다.
+
+가장 흔한 경우는 `metaData`, `exposes`, `shared` 같은 필수 필드가 빠진 것입니다. 보통 URL이 잘못된 JSON을 반환했거나, 게이트웨이가 불완전한 데이터를 반환했거나, producer가 유효한 MF manifest를 생성하지 않았다는 뜻입니다.
+
+### 해결 방법
+
+1. 오류 메시지의 manifestUrl을 직접 열어 다른 비즈니스 JSON 응답이나 빈 객체가 아니라 MF manifest를 반환하는지 확인합니다.
+2. producer에서 manifest output이 활성화되어 있고 빌드 artifact에 `metaData`, `exposes`, `shared`가 포함되어 있는지 확인합니다.
+3. 게이트웨이, 배포 플랫폼, 프록시가 manifest 응답을 다시 썼는지 확인합니다.
+4. Observability Plugin이 활성화되어 있다면 `diagnosis.facts.url`과 `diagnosis.actions`부터 확인합니다.
+
+## RUNTIME-014
+
+<ErrorCodeTitle code='RUNTIME-014'/>
+
+### 원인
+
+producer entry는 로드되고 초기화되었지만, producer가 요청한 expose를 export하지 않았습니다.
+
+일반적인 원인은 다음과 같습니다.
+
+1. consumer가 요청한 expose 이름이 잘못되었습니다.
+2. producer 빌드 설정에 해당 expose가 선언되어 있지 않습니다.
+3. `./` prefix, 대소문자, alias가 일치하지 않습니다.
+4. consumer가 오래된 빌드 artifact를 사용하고 있고 최신 producer expose가 배포되지 않았습니다.
+
+### 해결 방법
+
+1. consumer의 `loadRemote('remote/expose')` 요청과 producer의 `exposes` 설정을 비교합니다.
+2. expose에 `./` prefix가 필요한지 확인하고, 대소문자가 정확히 일치하는지 검증합니다.
+3. manifest를 통해 로드한다면 manifest의 `exposes` 목록에 해당 모듈이 있는지 확인합니다.
+4. Observability Plugin이 활성화되어 있다면 `diagnosis.facts.expose`와 관련 `check-expose` 조치를 확인합니다.
+
+## RUNTIME-015
+
+<ErrorCodeTitle code='RUNTIME-015'/>
+
+### 원인
+
+producer entry는 로드되었지만 컨테이너 초기화에 실패했습니다.
+
+보통 producer가 `init`을 실행하는 동안 발생합니다. 예를 들어 shared dependencies 초기화가 실패했거나, shareScope 데이터가 예상과 맞지 않았거나, producer entry 내부에서 오류가 발생한 경우입니다.
+
+### 해결 방법
+
+1. 메시지의 원본 오류를 읽습니다. `init` 중 실제로 발생한 실패 지점을 가리킵니다.
+2. host와 producer 사이의 shared config을 확인합니다. 특히 shareScope, singleton, strictVersion, requiredVersion, eager를 살펴보세요.
+3. producer remoteEntry 타입과 global name이 consumer 설정과 일치하는지 확인합니다.
+4. Observability Plugin이 활성화되어 있다면 `summary.phases.remoteEntry`, `diagnosis.facts`, `check-shared-provider` 조치를 확인합니다.
+
+## 자주 발생하는 문제(에러 코드 없음)
+
+### 경고: Invalid hook call. Hooks can only be called inside of the body of a function 컴포넌트.
+
+#### 오류 메시지
+
+:::danger 브라우저 오류 메시지
+경고: Invalid hook call. Hooks can only be called inside of the body of a function 컴포넌트. This could happen for one of the following reasons:
+
+You might have mismatching versions of React and the renderer (such as React DOM)
+
+You might be breaking the Rules of Hooks
+
+You might have more than one copy of React in the same app
+:::
+
+:::danger 브라우저 오류 메시지
+Uncaught TypeError: Cannot read properties on null (reading `useState`)
+:::
+
+#### 해결 방법
+
+이 오류는 React 다중 인스턴스 문제입니다. 보통 React가 같은 인스턴스를 재사용하지 못할 때 발생합니다.
+`shared`를 설정하고 `singleton: true`로 singleton 모드를 지정하면 이 문제를 피할 수 있습니다.
+
+```ts title="modern.config.js"
+{
+    ...
+    new ModuleFederationPlugin({
+            ...,
+         // 기본 설정
+         // shared: [
+         //   'react',
+         //   'react-dom',
+         //   'my-custom-module'
+         // ]
+
+         // 더 구체적인 설정
+            shared: {
+                react: { singleton: true, },
+                'react-dom': { singleton: true, },
+                'my-custom-module': { singleton: true, },
+                ...
+            },
+        })
+      ])
+  }
+```
+
+### HMR 실패
+
+* [React Developer Tools](https://chromewebstore.google.com/detail/react-developer-tools/fmkadmapgofadopljbjfkapdkoienihi)를 사용합니다.
+
+* shared module이 온라인 host에서 제공된다면 [Module Federation DevTools](/guide/debug/chrome-devtool.html)를 사용하고 `Enable HMR` 버튼을 클릭합니다.
+
+![](@public/guide/chrome-devtools/mf-devtool-hmr.jpg)
+
+### 서브패스 import가 공유되지 않음(중복 의존성 로드)
+
+#### 증상
+
+- 브라우저가 같은 패키지(예: `react-dom`)를 두 번 다운로드합니다.
+- React에서 "Invalid hook call" 또는 hydration mismatch 오류가 발생합니다.
+- `react-dom/client` 같은 서브패스 import에 대해 `loadShare`가 `false`를 반환합니다.
+
+#### 근본 원인
+
+`shared` 설정에 `'react-dom'`처럼 정확한 패키지 이름만 나열되어 있습니다. Module Federation은 빌드 시점에 import를 가로챕니다. 정확한 이름은 `import 'react-dom'`만 가로채며, `import { createRoot } from 'react-dom/client'` 같은 서브패스 import는 shared config을 우회해 로컬 번들에 포함됩니다.
+
+#### 해결 방법
+
+서브패스를 노출하는 패키지는 **trailing slash**를 사용해 접두사 매칭을 활성화하세요.
+
+```ts title="rspack.config.ts"
+shared: {
+  react: { singleton: true },
+  'react-dom': { singleton: true },      // 정확히 일치 — 'react-dom'만 매칭
+  'react-dom/': { singleton: true },     // 접두사 매칭 — 'react-dom/client', 'react-dom/server', ...
+  'react/': { singleton: true },         // 접두사 매칭 — 'react/jsx-runtime', 'react/jsx-dev-runtime', ...
+}
+```
+
+scoped package(`'@scope/package/'`)와 유틸리티 라이브러리(`'lodash/'`)에도 같은 방식이 적용됩니다.
+
+### A preload for 'http://resource-url' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.
+
+#### 원인
+
+producer URL이 manifest라면, 이 producer 모듈을 로드할 때 관련 리소스가 자동으로 preload됩니다. 위 경고가 발생하는 이유는 기본 preload에는 credentials가 설정되어 있지 않은데 실제 remote script 로드에는 해당 credentials가 포함되어 preload가 실패하기 때문입니다.
+
+#### 해결 방법
+
+[runtimePlugins](/configure/runtimeplugins.html)로 런타임 플러그인을 추가하고 [createLink](/plugin/dev/index.html#createlink) hook에서 `crossorigin` 속성을 설정합니다. 이 값은 실제 script 로드 방식과 일치해야 합니다.
+
+예를 들어 preload 링크의 `crossorigin` 속성을 `anonymous`로 바꾸려면 다음처럼 설정합니다.
+
+```ts title="runtimePlugin.ts"
+import { ModuleFederationRuntimePlugin } from '@module-federation/runtime/types';
+
+export default function MFLinkPlugin(): ModuleFederationRuntimePlugin {
+  return {
+    name: 'link-plugin',
+    createLink({ url }) {
+      const link = document.createElement('link');
+      link.setAttribute('href', url);
+      link.setAttribute('rel', 'preload');
+      link.setAttribute('as', 'script');
+      link.setAttribute('crossorigin', 'anonymous');
+      return link
+    }
+  };
+}
+```

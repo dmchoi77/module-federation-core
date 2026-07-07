@@ -1,0 +1,273 @@
+---
+title: "Service Worker 사용하기"
+---
+
+import {Steps} from '@theme'
+
+## Angular와 Module Federation에서 Service Worker 사용하기
+
+Angular Service Worker를 함께 사용하면 Module Federation을 적용한 Angular 프로젝트에서 자주 마주치는 문제를 줄일 수 있습니다. 특히 remote container에서 큰 코드 청크를 동적으로 불러올 때 유용합니다. Service Worker는 federation 코드와 관련 리소스를 캐싱해 remote container를 오프라인에서도 더 안정적으로 접근할 수 있게 하고, 결과적으로 애플리케이션 성능과 로딩 시간, 라우트 전환 경험을 개선합니다.
+
+## Angular Service Worker
+
+Angular의 Service Worker는 웹 애플리케이션 백그라운드에서 실행되는 작은 JavaScript 스크립트입니다. 웹 페이지나 데이터 로딩처럼 네트워크 요청을 관리하는 것이 주된 역할입니다.
+
+Service Worker는 대개 Single Page Application(SPA)으로 구성되는 Angular 애플리케이션에서 특히 효과적입니다. Angular 5.0부터는 Angular 앱에서 Service Worker를 쉽게 사용할 수 있습니다. 복잡한 네트워크 요청 처리나 캐싱 코드를 직접 작성하지 않아도 더 빠르고 매끄러운 로딩 경험을 만들 수 있습니다.
+
+Angular Service Worker의 동작 방식은 [공식 Angular 문서](https://angular.io/guide/service-worker-intro)에서 더 자세히 확인할 수 있습니다.
+
+## 장점
+
+### 성능과 안정성
+
+Service Worker는 JavaScript 모듈과 기타 애셋처럼 필요한 리소스를 캐싱합니다. 사용자가 한 번 내려받은 리소스는 로컬에 저장되므로, 이후 방문에서는 로딩 시간이 크게 줄어듭니다.
+
+### 오프라인 지원
+
+Service Worker를 사용하면 네트워크 상태가 불안정해도 Angular 애플리케이션이 효과적으로 동작할 수 있습니다. Module Federation에서는 특히 유용합니다. 네트워크 신뢰도와 관계없이 앱 기능을 유지하고 일관된 사용자 경험을 제공할 수 있기 때문입니다.
+
+### 애플리케이션 업데이트 단순화
+
+Service Worker는 federated 모듈을 백그라운드에서 업데이트하는 흐름을 단순하게 만듭니다. federated 모듈 간 버전 일관성을 유지하는 데 도움을 주며, 의존성 충돌 없이 애플리케이션이 안정적으로 실행되도록 합니다.
+
+### 사용자 경험 개선
+
+Module Federation을 사용하는 애플리케이션에서는 Service Worker가 필요한 모듈을 미리 가져올 수 있습니다. 애플리케이션의 다른 영역으로 이동할 때 로딩 시간이 줄어들어 더 부드럽고 빠른 사용자 경험을 제공할 수 있습니다.
+
+## Service Worker 구현하기
+
+이 섹션은 Angular에서 Service Worker를 설정하는 간단한 가이드를 제공합니다. 더 자세한 내용은 [공식 Angular 문서](https://angular.io/guide/service-worker-getting-started)를 참고하세요.
+
+Angular 애플리케이션에 Service Worker를 제대로 통합하려면 먼저 애플리케이션을 Progressive Web App(PWA)으로 전환해야 합니다. PWA는 네이티브 앱에 가까운 기능을 제공해 사용자 경험을 높일 수 있습니다. PWA의 개념, 장점, 비즈니스 영향, 개발 방식은 web.dev의 [Progressive Web Apps](https://web.dev/explore/progressive-web-apps) 페이지에서 더 자세히 살펴볼 수 있습니다.
+
+## PWA 설정
+
+앱의 루트 디렉터리에서 `ng add @angular/pwa`를 실행합니다. 이 명령은 다음 작업을 수행합니다.
+
+1. **Service Worker 패키지 설치**: 프로젝트에 `@angular/service-worker`를 추가합니다.
+2. **Service Worker 설정 생성**: `ngsw-config.json` 파일을 생성합니다.
+3. **인덱스 파일 업데이트**: `index.html`에서 `manifest.webmanifest`를 참조하도록 수정합니다.
+
+Service Worker 설정이 끝나면 앱 성능을 최적화할 수 있도록 캐싱 전략을 구성합니다.
+
+### 캐싱 전략
+
+앱 성능을 높이려면 캐싱 전략을 정의해야 합니다. Service Worker는 오프라인 상태에서도 내비게이션과 API URL 요청을 처리할 수 있습니다. 어떤 전략이 적합한지는 앱 구성에 따라 달라집니다.
+
+앱에 lazy loading 모듈이 있다면 캐싱 전략에 포함하세요. 다음은 `ngsw-config.json` 예시입니다.
+
+```json
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "main-assets",
+      "installMode": "prefetch",
+      "updateMode": "lazy",
+      "resources": {
+        "files": [
+          "/favicon.ico",
+          "/index.html",
+          "/*.css",
+          "/main.js",
+          "/polyfills.js",
+          "/styles.css",
+          "/lazy-module-1.js",
+          "/lazy-module-2.js"
+        ]
+      }
+    },
+    {
+      "name": "additional-assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/assets/**",
+          "/*.(png|jpg|jpeg|svg|gif|webp|woff2|woff|ttf|otf)"
+        ]
+      }
+    }
+  ]
+}
+```
+
+### 동적 로딩과 의존성 관리
+
+remote container를 동적으로 로드하는 경우, Webpack이 필요한 의존성을 내려받습니다. <br/>
+브라우저 개발자 도구의 Network 탭에서 어떤 의존성이 내려받아졌는지 확인하세요. <br/>
+이렇게 보면 로딩 과정에서 가져온 파일을 한눈에 확인할 수 있어, 어떤 파일을 캐싱해야 할지 판단하기 쉽습니다. <br/>
+remote container가 동적으로 로드될 때 Webpack은 아직 로컬에 없는 필수 의존성을 가져옵니다.
+
+![동적 로딩과 의존성 관리](https://angular.io/generated/images/guide/service-worker/sw-active.png)
+
+### remote container에 맞게 전략 조정하기
+
+새 빌드에서 파일명이 바뀌어 생기는 문제를 피하려면 wildcard 패턴을 사용해 remote URL의 모든 `*.js` 파일을 캐싱하세요. 이 방식은 `ngsw-config.json` 파일에서 설정합니다.
+
+```json
+{
+  "name": "RemoteAssets",
+  "installMode": "lazy",
+  "updateMode": "prefetch",
+  "resources": {
+    "urls": [
+      "https://your-remote-container-url/*.js" // wildcard로 모든 JS 파일 캐싱
+    ]
+  }
+}
+```
+
+설정 매개변수 이해하기
+
+- **Name**: 캐시 위치를 결정하는 `manifestHash`와 연결되는 asset group을 식별합니다.
+- **InstallMode**: 초기 캐싱 방식을 결정합니다. `prefetch`는 즉시 캐싱하고, `lazy`는 필요할 때 캐싱합니다.
+- **UpdateMode**: 업데이트 시점의 캐싱 방식을 정합니다. `prefetch`는 즉시 업데이트하고, `lazy`는 나중에 캐싱합니다.
+- **리소스**: `files` 또는 `urls`를 포함해 캐싱 범위를 설명합니다.
+
+### 캐시된 Federated Chunk 업데이트하기
+
+#### 데이터 최신 상태 유지하기
+
+Angular Service Worker는 데이터를 최신 상태로 유지하기 위해 SwUpdate Service와 Hard Refresh 같은 기능을 제공합니다.
+
+Angular Service Worker에서 사용하는 SwUpdate Service와 Hard Refresh 방식을 더 깊이 이해하려면 [공식 Angular 문서](https://angular.io/guide/service-worker-communications)를 참고하세요. 관련 기능에 대한 자세한 설명과 가이드를 확인할 수 있습니다.
+
+*Hard Refresh 구현 예시*:
+
+```javascript
+function hardRefresh() {
+  navigator.serviceWorker.getRegistration().then(async (registration) => {
+    if (!registration) return;
+    await registration.unregister();
+    window.location.reload();
+  });
+}
+```
+이 구현은 사용자에게 항상 최신 콘텐츠를 제공하도록 도와줍니다.
+
+Hard Refresh를 수행하면 다음 작업이 실행됩니다.
+
+1. Service Worker 등록을 해제합니다.
+2. Service Worker가 캐싱한 모든 파일을 삭제합니다.
+3. 웹 페이지를 다시 로드합니다.
+
+
+## 더 정교한 Service Worker 관리를 위한 Workbox
+
+Workbox는 Angular Service Worker처럼 프레임워크에 특화된 도구만으로는 다루기 어려운 PWA 기능을 보강하는 JavaScript 라이브러리 모음입니다. Angular에서 Module Federation을 함께 사용하는 복잡한 구성에서 특히 유용하며, 앱 성능과 사용자 경험을 더 세밀하게 개선할 수 있습니다.
+
+### Workbox의 주요 기능
+
+1. **커스터마이징을 위한 Webpack 통합**: Workbox는 `workbox-webpack-plugin`을 통해 Webpack과 자연스럽게 통합됩니다. Module Federation 프로젝트에서는 Webpack 설정 안에서 Service Worker를 효율적이고 정교하게 관리할 수 있다는 점이 중요합니다.
+
+2. **프레임워크에 구애받지 않는 구조**: Workbox는 다양한 JavaScript 프레임워크와 라이브러리에서 사용할 수 있습니다. 여러 프레임워크가 섞인 프로젝트나 범용 도구가 필요한 상황에 잘 맞습니다.
+
+3. **세밀한 캐싱 제어**: 캐싱 전략을 직접 세밀하게 제어할 수 있어, 리소스 관리 요구사항에 맞춘 Service Worker 스크립트를 작성할 수 있습니다.
+
+
+
+### 설치와 설정
+
+<Steps>
+### Workbox 설치하기
+
+먼저 Angular 프로젝트에 Workbox를 추가합니다.
+
+```bash
+npm install workbox-webpack-plugin --save-dev
+```
+
+### Webpack에서 Workbox 설정하기
+
+Module Federation은 Webpack에 크게 의존하므로, Webpack 설정에서 Workbox를 플러그인으로 구성합니다. Service Worker 전략이 Module Federation의 분산 구조와 맞물리게 하려면 이 단계가 중요합니다.
+
+*Webpack 설정 예시:*
+
+```javascript
+const { GenerateSW } = require('workbox-webpack-plugin');
+
+module.exports = {
+  // ... other webpack config relevant to Module Federation
+  plugins: [
+    new GenerateSW({
+      // Module Federation 구성에 맞춘 설정
+      // 새 Service Worker가 빠르게 적용되고 오래된 Service Worker가 남지 않도록 함
+      clientsClaim: true,
+      skipWaiting: true,
+    })
+  ],
+};
+```
+
+### 캐싱 전략 조정과 Workbox Service Worker 노출
+
+Module Federation 구성에서는 Workbox Service Worker 같은 공유 리소스를 올바르게 노출하는 것이 중요합니다. 다음과 같이 설정할 수 있습니다.
+
+1. *Workbox를 shared modules로 정의하기:* Webpack의 Module Federation 플러그인 설정에서 Workbox Service Worker를 shared modules로 선언합니다. 이렇게 하면 모든 federated 모듈에서 Service Worker에 접근할 수 있습니다.
+
+*`webpack.config.js`의 Module Federation 설정 예시:*
+
+```javascript
+const ModuleFederationPlugin = require('webpack/lib/container/ModuleFederationPlugin');
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      // 다른 Module Federation 설정
+      shared: {
+        // Workbox 설정을 모듈로 공유
+        'workbox-webpack-plugin': {
+          singleton: true,
+          requiredVersion: 'your-workbox-version'
+        }
+      }
+    })
+  ],
+};
+```
+
+2. *Workbox Service Worker를 동적으로 가져오기:* 동적 import를 사용해 Angular 애플리케이션 안에서 Workbox Service Worker를 로드합니다. 보통 애플리케이션의 메인 엔트리 파일에서 처리합니다.
+
+*`main.ts`에서 동적으로 로드하는 예시:*
+
+```typescript
+import { Workbox } from 'workbox-window';
+
+if ('serviceWorker' in navigator) {
+  const wb = new Workbox('/service-worker.js');
+
+  wb.register();
+}
+```
+
+이 예시에서는 클라이언트 측 애플리케이션에서 Service Worker 등록 과정을 단순화하기 위해 `workbox-window`를 사용합니다. 이 패키지가 설치되어 있고 프로젝트 의존성에 포함되어 있는지 확인하세요. Webpack에서 Service Worker를 등록하는 자세한 내용은 [공식 문서](https://webpack.js.org/guides/progressive-web-application/#registering-our-service-worker)를 참고하는 것을 권장합니다.
+
+### Workbox 전략 커스터마이징
+
+Workbox는 캐싱과 네트워크 요청을 위한 다양한 전략을 제공합니다. 애플리케이션 요구사항에 맞게 Service Worker 파일에서 이 전략들을 설정하세요.
+
+*예제 `service-worker.js`:*
+
+```javascript
+import { precacheAndRoute } from 'workbox-precaching';
+import { NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+
+// 초기 리소스를 빠르게 로드하기 위한 precache
+precacheAndRoute(self.__WB_MANIFEST);
+
+// 런타임 캐싱 전략 예시
+self.addEventListener('fetch', event => {
+  if (event.request.url.includes('/api/')) {
+    // API 요청에는 network-first 전략 사용
+    event.respondWith(new NetworkFirst().handle({ event }));
+  } else {
+    // 그 외 리소스에는 stale-while-revalidate 전략 사용
+    event.respondWith(new StaleWhileRevalidate().handle({ event }));
+  }
+});
+```
+
+이 설정에서 Workbox는 API 호출에는 network-first 전략을, 그 외 리소스에는 stale-while-revalidate 전략을 적용해 효율적인 data fetching과 캐싱을 보장합니다.
+</Steps>

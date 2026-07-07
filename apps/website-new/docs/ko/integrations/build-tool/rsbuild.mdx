@@ -1,0 +1,141 @@
+# Rsbuild
+
+Rsbuild App에서 Module Federation 기반 산출물을 빠르게 빌드할 수 있도록 돕습니다.
+
+## 빠른 시작
+
+### 설치
+
+다음 명령으로 플러그인을 설치합니다.
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm add @module-federation/rsbuild-plugin --save-dev',
+    yarn: 'yarn add @module-federation/rsbuild-plugin --save-dev',
+    pnpm: 'pnpm add @module-federation/rsbuild-plugin --save-dev',
+    bun: 'bun add @module-federation/rsbuild-plugin --save-dev',
+  }}
+/>
+
+### 플러그인 등록
+
+#### Rsbuild App
+
+```ts title='rsbuild.config.ts'
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+import { defineConfig } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
+
+export default defineConfig({
+  server: {
+    port: 2000,
+  },
+  plugins: [
+    pluginReact(),
+    pluginModuleFederation({
+      name: 'federation_consumer',
+      remotes: {
+        remote1: 'remote1@http://localhost:2001/mf-manifest.json',
+      },
+      shared: ['react', 'react-dom'],
+    }),
+  ],
+});
+```
+
+### 참고
+
+Module Federation 런타임 기능을 직접 사용해야 한다면 [@module-federation/enhanced](/guide/runtime/index.html)를 설치하세요.
+
+## 설정
+
+타입은 다음과 같습니다.
+
+```ts
+export declare const pluginModuleFederation: (moduleFederationOptions: ModuleFederationOptions, rsbuildOptions?: RSBUILD_PLUGIN_OPTIONS) => RsbuildPlugin;
+
+type RSBUILD_PLUGIN_OPTIONS = {
+  target?: 'web' | 'node' | 'dual';
+  ssr?: boolean;
+  ssrDir?: string;
+  environment?: string;
+}
+```
+
+### moduleFederationOptions
+
+[Module Federation 설정](/configure/index.html)을 참고하세요.
+
+### rsbuildOptions
+
+Rsbuild 플러그인에 추가로 전달하는 설정입니다.
+
+#### target
+
+:::tip
+
+`target: 'dual'`은 Rslib/Rspress에서 global plugin으로 사용할 때만 지원합니다.
+
+:::
+
+- 타입: `'web' | 'node' | 'dual'`
+- 기본값: `'web'`
+
+출력 결과가 실행될 런타임 환경을 지정합니다. `dual`로 설정하면 Web(브라우저) 출력과 Node.js(SSR) 출력을 모두 빌드합니다.
+
+`target: 'dual'`로 SSR 출력을 생성한 뒤에는 [Modern.js Consumer 만들기](/integrations/framework/modernjs/quick-start.html)를 참고해 consumer를 만들고, 대응되는 Rslib SSR producer와 연결할 수 있습니다.
+
+Rsbuild App SSR에서는 `target: 'node'`와 `environment`를 함께 사용해 특정 app environment에 Module Federation을 적용합니다.
+
+```ts title='rsbuild.config.ts'
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+import { defineConfig } from '@rsbuild/core';
+
+export default defineConfig({
+  environments: {
+    client: {},
+    ssr: {},
+  },
+  plugins: [
+    pluginModuleFederation(
+      {
+        name: 'host',
+        remotes: {
+          remote: 'remote@http://localhost:3001/mf-manifest.json',
+        },
+      },
+      {
+        target: 'node',
+        environment: 'ssr',
+      },
+    ),
+  ],
+});
+```
+
+#### environment
+
+- 타입: `string`
+- 기본값: 호출한 도구가 자동 감지합니다.
+  - Rslib: `'mf'`
+  - Rsbuild app + `target: 'web'`: `'web'`
+  - Rsbuild app + `target: 'node'`: `'node'`
+  - Rspress + `target: 'web'`: `'web'`
+  - Rspress + `target: 'node'`: `'node'`
+
+`target: 'node'`가 Node-target federation 동작을 적용할 environment config를 선택할 때 사용하는 environment 이름입니다.
+
+#### ssr
+
+:::danger 지원 중단 경고
+
+이 옵션은 deprecated 되었습니다. SSR을 활성화하려면 [target: 'dual'](#target)을 사용하세요.
+
+:::
+
+- 타입: `boolean`
+- 기본값: `false`
+
+활성화하면 SSR 출력을 생성합니다.

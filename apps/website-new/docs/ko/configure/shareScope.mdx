@@ -1,0 +1,50 @@
+# shareScope
+
+`shareScope`는 producer가 어떤 shared dependency pool(Share Scope)에 참여할지 지정합니다. Share Scope는 이름이 붙은 shared dependency pool이라고 이해하면 됩니다. 의존성은 같은 Scope 안에서만 재사용됩니다.
+
+- 타입: `string | string[]`
+- 필수: 아니요
+- 기본값: `'default'`
+
+## 동작
+
+- Producer가 runtime에서 초기화할 Share Scope를 제어합니다.
+- `shared[*].shareScope`와 함께 동작합니다. shared dependency는 자신에게 지정된 Scope에만 참여합니다.
+- `remotes[remote].shareScope`와 함께 동작합니다. Consumer는 재사용하려는 Scope를 producer와 맞춰야 합니다. 맞지 않는 Scope는 비어 있는 것으로 처리되어 재사용할 수 없습니다.
+
+## 예제
+
+### 단일 Scope(기본값)
+
+```ts
+new ModuleFederationPlugin({
+  name: 'app_remote',
+  shareScope: 'default',
+});
+```
+
+### 여러 Scope(격리된 공유 Pool)
+
+```ts
+new ModuleFederationPlugin({
+  name: 'app_remote',
+  shareScope: ['default', 'scope1'],
+  shared: {
+    react: {
+      singleton: true,
+      requiredVersion: false,
+      shareScope: 'default',
+    },
+    '@company/design-system': {
+      singleton: true,
+      requiredVersion: false,
+      shareScope: 'scope1',
+    },
+  },
+});
+```
+
+## 참고
+
+- `shareScope`는 이 모듈이 어떤 Share Scope를 초기화할지 선언합니다. 의존성을 해당 Scope에 자동으로 넣지는 않습니다. 의존성이 어느 Scope에 들어갈지는 각 `shared` entry의 `shareScope`가 제어합니다.
+- 앱 사이에서 실제로 의존성을 재사용하려면 producer와 consumer가 일반적으로 같은 Scope를 사용해야 합니다. 자세한 내용은 [remotes.shareScope](/configure/remotes.html#sharescope)를 참고하세요.

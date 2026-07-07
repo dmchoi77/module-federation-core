@@ -1,0 +1,599 @@
+---
+title: Module Federation에서 remote 모듈 렌더링 오류 처리하기
+---
+
+# Module Federation에서 remote 모듈 렌더링 오류 처리하기
+
+import BlogGifGrid from '@components/BlogGifGrid.tsx';
+
+## 배경
+
+remote 모듈 로딩은 네트워크 리소스 로딩 실패나 비즈니스 로직 렌더링 실패로 인해 실패할 수 있습니다.
+
+Module Federation 런타임은 로딩 실패 원인을 찾을 수 있도록 자세한 오류 로그와 런타임 hook을 제공합니다. 하지만 사이트 전체의 안정성을 보장하려면 별도의 오류 대체 메커니즘도 필요합니다. remote 모듈 하나의 렌더링 실패가 전체 사이트 장애로 번지지 않게 하기 위해서입니다.
+
+## 해결 방향
+
+견고한 remote 모듈 로딩 메커니즘을 만들려면 다음 세 단계에서 문제를 처리할 수 있습니다.
+
+> 아래 해결 방식은 [router-demo](https://github.com/module-federation/core/tree/main/apps/router-demo) 예제를 참고할 수 있습니다.
+
+### 네트워크 계층: 재시도 메커니즘
+
+[RetryPlugin](/plugin/plugins/retry-plugin.html)을 사용해 네트워크 관련 문제를 처리합니다.
+
+- 실패한 리소스 요청을 자동으로 재시도합니다.
+- 재시도 횟수와 간격을 설정할 수 있습니다.
+- 사용자 정의 오류 처리 전략을 적용할 수 있습니다.
+
+### 로딩 계층: 오류 처리 hook
+
+더 세밀한 에러 처리가 필요하다면 Module Federation 런타임이 제공하는 [`errorLoadRemote`](/plugin/dev/index.html#errorloadremote) hook을 사용합니다.
+
+- 여러 로딩 라이프사이클에서 발생한 오류를 포착합니다.
+- fallback component 또는 backup 리소스를 제공할 수 있습니다.
+- 사용자 정의 오류 처리 전략을 적용할 수 있습니다.
+
+### 렌더링 계층: ErrorBoundary
+
+React의 `ErrorBoundary` 메커니즘으로 컴포넌트 렌더링 예외를 처리합니다.
+
+- 자연스러운 기능 저하를 제공하고 사용자에게 친절한 오류 메시지를 표시합니다.
+- 오류 영향을 격리해 전체 애플리케이션 장애를 막습니다.
+- 오류 복구와 재시도 로딩을 지원합니다.
+
+세 방식은 서로 다른 시나리오를 위한 것이며, 각각 따로 사용할 수도 있고 조합해 더 포괄적인 오류 처리 메커니즘을 만들 수도 있습니다. 아래에서는 각 방식의 구체적인 구현을 살펴봅니다.
+
+### 재시도 메커니즘 추가
+
+네트워크가 불안정하거나 producer 서비스가 아직 시작되지 않은 상황에서는 재시도 메커니즘을 추가해 리소스를 여러 번 요청할 수 있습니다. 이렇게 하면 리소스 로딩 성공 가능성을 높일 수 있습니다.
+
+Module Federation은 리소스 재시도 메커니즘을 지원하기 위해 공식 retry 플러그인 [@module-federation/retry-plugin](/plugin/plugins/retry-plugin.html)을 제공합니다. Fetch 리소스와 script 리소스 재시도를 지원합니다.
+
+#### 순수 런타임 등록
+
+```ts
+
+import React from 'react';
+import { createInstance, loadRemote } from '@module-federation/enhanced/runtime';
+import { RetryPlugin } from '@module-federation/retry-plugin';
+
+const mf = createInstance({
+  name: 'host',
+  remotes: [
+      {
+          name: "remote1",
+          alias: "remote1"
+          entry: "http://localhost:2001/mf-manifest.json",
+      }
+  ],
+  plugins: [
+    RetryPlugin({
+      retryTimes: 3,
+      retryDelay: 1000,
+      manifestDomains: ['https://domain1.example.com', 'https://domain2.example.com'],
+      domains: ['https://cdn1.example.com', 'https://cdn2.example.com'],
+      addQuery: ({ times, originalQuery }) => `${originalQuery}&retry=${times}`,
+      onRetry: ({ times, url }) => console.log('retry', times, url),
+      onSuccess: ({ url }) => console.log('success', url),
+      onError: ({ url }) => console.log('error', url),
+    }),
+  ]
+});
+
+// 모듈 로딩
+const Remote1Button = React.lazy(() => mf.loadRemote('remote1/button'));
+
+export default () => {
+  return (
+    <React.Suspense fallback={<div> Loading Remote1App...</div>}>
+      <Remote1Button />
+    </React.Suspense>
+  );
+}
+
+// 메서드/함수 로딩
+mf.loadRemote<{add: (...args: Array<number>)=> number }>("remote1/util").then((md)=>{
+    md.add(1,2,3);
+});
+
+```
+
+> [@module-federation/retry-plugin](/plugin/plugins/retry-plugin.html#type)의 매개변수 설정은 [문서](/plugin/plugins/retry-plugin.html#type)를 참고하세요.
+
+#### 플러그인 등록
+
+```ts
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+import { defineConfig } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [
+    pluginReact(),
+    pluginModuleFederation({
+      name: 'host',
+      runtimePlugins: [
+        path.join(__dirname, './src/runtime-plugin/retry.ts'),
+      ],
+    }),
+  ],
+});
+```
+
+```tsx
+// src/runtime-plugin/retry.ts
+import { RetryPlugin } from '@module-federation/retry-plugin';
+
+const retryPlugin = () =>
+  RetryPlugin({
+    retryTimes: 3,
+    retryDelay: 1000,
+    manifestDomains: ['https://domain1.example.com', 'https://domain2.example.com'],
+    domains: ['https://cdn1.example.com', 'https://cdn2.example.com'],
+    addQuery: ({ times, originalQuery }) => `${originalQuery}&retry=${times}`,
+    onRetry: ({ times, url }) => console.log('retry', times, url),
+    onSuccess: ({ url }) => console.log('success', url),
+    onError: ({ url }) => console.log('error', url),
+  });
+export default retryPlugin;
+```
+
+동작 결과는 다음과 같습니다.
+
+<BlogGifGrid
+  items={[
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/retry-disable.gif",
+      title: "네트워크 요청 차단"
+    },
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/retry-enable.gif",
+      title: "차단 후 다시 활성화"
+    }
+  ]}
+/>
+
+### errorLoadRemote hook
+
+remote 모듈 로딩 과정에서 발생한 에러는 [`errorLoadRemote`](/plugin/dev/index.html#errorloadremote) hook에서 잡을 수 있습니다.
+
+`errorLoadRemote`는 Module Federation 런타임의 오류 처리 hook입니다. remote 모듈 로딩이 실패하면 이 hook이 실행됩니다. 여러 `lifecycle` 단계에서 발생하는 모듈 로딩 실패를 감지하고, 사용자가 오류 처리 전략을 직접 정의할 수 있게 설계되어 있습니다.
+
+`errorLoadRemote`는 error fallback을 위한 fallback component 반환을 지원합니다. 또한 이후 과정이 정상적으로 렌더링될 수 있도록 특정 리소스 내용을 반환하는 방식도 지원합니다.
+
+모듈 등록과 로딩 방식은 "순수 런타임 + 동적 import"와 "플러그인 등록 + 동기 import" 두 가지로 나눠 볼 수 있습니다.
+
+
+#### 순수 런타임 + 동적 import
+
+순수 런타임 등록을 사용할 때 remote 모듈은 등록 이후에야 리소스를 요청합니다.
+
+```tsx
+import React from 'react';
+import { createInstance, loadRemote } from '@module-federation/enhanced/runtime';
+import { RetryPlugin } from '@module-federation/retry-plugin';
+
+// 모듈 등록
+const mf = createInstance({
+    name: 'host',
+    remotes: [
+        {
+            name: "remote1",
+            entry: "http://localhost:2001/mf-manifest.json",
+            alias: "remote1"
+        }
+    ],
+    plugins: [
+      RetryPlugin({
+        retryTimes: 3,
+        retryDelay: 1000,
+      }),
+    ]
+});
+
+// 모듈 로딩
+const Remote1Button = React.lazy(() => loadRemote('remote1/button'));
+
+export default () => {
+  return (
+    <React.Suspense fallback={<div> Loading Remote1App...</div>}>
+      <Remote1Button />
+    </React.Suspense>
+  );
+}
+
+// 메서드/함수 로딩
+loadRemote<{add: (...args: Array<number>)=> number }>("remote1/util").then((md)=>{
+    md.add(1,2,3);
+});
+
+```
+
+`errorLoadRemote` hook을 사용하면 리소스 로딩 오류를 포함한 remote 모듈 로딩 오류를 포착하고, `errorBoundary`에 사용할 fallback component를 반환할 수 있습니다.
+
+```tsx
+import React from 'react';
+import { createInstance, loadRemote } from '@module-federation/enhanced/runtime';
+import { RetryPlugin } from '@module-federation/retry-plugin';
+
+const fallbackPlugin: () => ModuleFederationRuntimePlugin = function () {
+  return {
+    name: 'fallback-plugin',
+    errorLoadRemote(args) {
+      return { default: () => <div> fallback component </div> };
+    },
+  };
+};
+
+// 모듈 등록
+const mf = createInstance({
+  name: 'host',
+  remotes: [
+      {
+          name: "remote1",
+          alias: "remote1"
+          entry: "http://localhost:2001/mf-manifest.json",
+      }
+  ],
+  plugins: [
+    RetryPlugin({
+      retryTimes: 3,
+      retryDelay: 1000,
+    }),
+    fallbackPlugin()
+  ]
+});
+
+// 모듈 로딩
+const Remote1Button = React.lazy(() => mf.loadRemote('remote1/button'));
+
+export default () => {
+  return (
+    <React.Suspense fallback={<div> Loading Remote1App...</div>}>
+      <Remote1Button />
+    </React.Suspense>
+  );
+}
+
+// 메서드/함수 로딩
+mf.loadRemote<{add: (...args: Array<number>)=> number }>("remote1/util").then((md)=>{
+    md.add(1,2,3);
+});
+
+```
+
+동작 결과는 다음과 같습니다.
+
+<BlogGifGrid
+  items={[
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/hook-runtime-disable.gif",
+      title: "네트워크 요청 차단"
+    },
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/hook-runtime-enable.gif",
+      title: "차단 후 다시 활성화"
+    }
+  ]}
+/>
+
+
+#### 플러그인 등록 + 동기 import
+
+플러그인 등록 방식에서는 동기 import로 모듈을 로드할 수 있습니다. 이 경우 리소스 요청 시점이 순수 런타임보다 빠르기 때문에, 플러그인 안에서 `errorLoadRemote` hook을 등록해야 합니다.
+
+```tsx
+// rsbuild.config.ts
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+import { defineConfig } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [
+    pluginReact(),
+    pluginModuleFederation({
+      name: 'host',
+      remotes: {
+        remote1: 'remote1@http://localhost:2001/mf-manifest.json',
+      },
+      runtimePlugins: [
+        path.join(__dirname, './src/runtime-plugin/retry.ts'),
+        path.join(__dirname, './src/runtime-plugin/fallback.ts'),
+      ],
+      ...
+    }),
+  ],
+});
+
+```
+
+:::info 참고
+다음 예제는 서로 다른 `lifecycle` 단계에서 오류를 처리하는 방법을 보여 줍니다.
+
+애플리케이션 시나리오가 단순하다면 아래 **간소화 버전**을 참고하세요. 하나의 공통 오류 처리 방식으로 통합할 수 있습니다.
+
+:::
+
+```tsx
+// src/runtime-plugin/fallback.ts
+import type { ModuleFederationRuntimePlugin } from '@module-federation/runtime';
+
+interface FallbackConfig {
+  // 백업 서비스 주소
+  backupEntryUrl?: string;
+  // 사용자 정의 오류 메시지
+  errorMessage?: string;
+}
+
+const fallbackPlugin = (config: FallbackConfig = {}): ModuleFederationRuntimePlugin => {
+  const {
+    backupEntryUrl = 'http://localhost:2002/mf-manifest.json',
+    errorMessage = '모듈 로딩에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+  } = config;
+
+  return {
+    name: 'fallback-plugin',
+    async errorLoadRemote(args) {
+      // 컴포넌트 로딩 오류 처리
+      if (args.lifecycle === 'onLoad') {
+        const React = await import('react');
+
+        // 오류 메시지를 보여주는 fallback component 생성
+        const FallbackComponent = React.memo(() => {
+          return React.createElement(
+            'div',
+            {
+              style: {
+                padding: '16px',
+                border: '1px solid #ffa39e',
+                borderRadius: '4px',
+                backgroundColor: '#fff1f0',
+                color: '#cf1322'
+              }
+            },
+            errorMessage
+          );
+        });
+
+        FallbackComponent.displayName = 'ErrorFallbackComponent';
+
+        return () => ({
+          __esModule: true,
+          default: FallbackComponent
+        });
+      }
+
+      // entry 파일 로딩 오류 처리
+      if (args.lifecycle === 'afterResolve') {
+        try {
+          // 백업 서비스 로딩 시도
+          const response = await fetch(backupEntryUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch backup entry: ${response.statusText}`);
+          }
+          const backupManifest = await response.json();
+          console.info('Successfully loaded backup manifest');
+          return backupManifest;
+        } catch (error) {
+          console.error('Failed to load backup manifest:', error);
+          // 백업 서비스도 실패하면 원래 오류를 반환합니다.
+          return args;
+        }
+      }
+
+      return args;
+    },
+  };
+};
+
+export default fallbackPlugin;
+```
+
+- `App.tsx` 동기 import: `import Remote1App from 'remote1/app';`
+
+- `fallback.ts` 설명:
+
+  - `errorLoadRemote` hook은 오류의 상세 정보를 담은 `args` 매개변수를 받습니다. `args.lifecycle`을 통해 오류가 발생한 단계를 판단하고, 그에 맞는 처리 전략을 적용할 수 있습니다.
+
+  - **컴포넌트 로딩 오류 처리** (`args.lifecycle === 'onLoad'`)
+    - 이 유형의 오류는 entry 리소스인 `mf-manifest.json` 외의 모듈 로딩 과정에서 발생합니다.
+    - 스타일을 포함한 fallback component를 반환할 수 있습니다.
+
+    ```ts
+    if (args.lifecycle === 'onLoad') {
+      const React = await import('react');
+      const FallbackComponent = React.memo(() => {
+        return React.createElement(
+          'div',
+          {
+            style: {
+              padding: '16px',
+              border: '1px solid #ffa39e',
+              borderRadius: '4px',
+              backgroundColor: '#fff1f0',
+              color: '#cf1322'
+            }
+          },
+          'fallback component'
+        );
+      });
+      FallbackComponent.displayName = 'ErrorFallbackComponent';
+      return () => ({
+        __esModule: true,
+        default: FallbackComponent
+      });
+    }
+    ```
+
+  - **entry 파일 로딩 오류 처리** (`args.lifecycle === 'afterResolve'`)
+    - 이 유형의 오류는 entry 리소스인 `mf-manifest.json` 로딩 과정에서 발생합니다.
+    - 다음 두 방식으로 처리할 수 있습니다.
+
+     a. 백업 서비스 로딩 시도:
+     ```ts
+     if (args.lifecycle === 'afterResolve') {
+       try {
+         const response = await fetch('http://localhost:2002/mf-manifest.json');
+         if (!response.ok) {
+           throw new Error(`Failed to fetch backup entry: ${response.statusText}`);
+         }
+         const backupManifest = await response.json();
+         console.info('Successfully loaded backup manifest');
+         return backupManifest;
+       } catch (error) {
+         console.error('Failed to load backup manifest:', error);
+         return args;
+       }
+     }
+     ```
+
+     b. 로컬 백업 리소스 사용:
+     ```ts
+     if (args.lifecycle === 'afterResolve') {
+       // 미리 정의한 backup manifest를 사용합니다.
+       const backupManifest = {
+          id: 'fallback',
+          name: 'fallback',
+          metaData: {
+            name: 'fallback',
+            type: 'app',
+            buildInfo: {
+              buildVersion: 'local',
+              buildName: 'fallback',
+            },
+            remoteEntry: {
+              name: 'remoteEntry.js',
+              path: '',
+              type: 'global',
+            },
+            types: {
+              path: '',
+              name: '',
+              zip: '@mf-types.zip',
+              api: '@mf-types.d.ts',
+            },
+            globalName: 'fallback',
+            pluginVersion: '1',
+            publicPath: 'https://example.com/',
+          },
+          shared: [],
+          remotes: [],
+          exposes: [],
+        };
+       return backupManifest;
+     }
+     ```
+
+  - **간소화 버전**
+
+     오류 타입을 구분할 필요가 없다면 범용 오류 처리 방식을 사용할 수도 있습니다.
+
+  ```ts
+  import type { ModuleFederationRuntimePlugin } from '@module-federation/runtime';
+
+  const fallbackPlugin = (errorMessage = '모듈 로딩에 실패했습니다. 잠시 후 다시 시도해 주세요.'): ModuleFederationRuntimePlugin => {
+    return {
+      name: 'fallback-plugin',
+      async errorLoadRemote() {
+        const React = await import('react');
+        const FallbackComponent = React.memo(() => {
+          return React.createElement(
+            'div',
+            {
+              style: {
+                padding: '16px',
+                border: '1px solid #ffa39e',
+                borderRadius: '4px',
+                backgroundColor: '#fff1f0',
+                color: '#cf1322'
+              }
+            },
+            errorMessage
+          );
+        });
+        FallbackComponent.displayName = 'ErrorFallbackComponent';
+        return () => ({
+          __esModule: true,
+          default: FallbackComponent
+        });
+      },
+    };
+  };
+  export default fallbackPlugin;
+  ```
+
+동작 결과는 다음과 같습니다.
+
+<BlogGifGrid
+  items={[
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/hook-plugin-disable.gif",
+      title: "네트워크 요청 차단"
+    },
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/hook-plugin-enable.gif",
+      title: "차단 후 다시 활성화"
+    }
+  ]}
+/>
+
+
+### 컴포넌트에 ErrorBoundary 설정
+
+React의 ErrorBoundary는 component-level errors를 처리하는 마지막 방어선입니다. lazy loading처럼 remote modules를 동적으로 로드하는 시나리오에서 remote modules의 렌더링 오류를 포착하고 처리하며 graceful degradation을 제공할 수 있습니다.
+
+컴포넌트에 ErrorBoundary를 설정하는 방식은 lazy loading처럼 dynamic import로 remote modules를 불러오는 시나리오에 적합합니다.
+
+또한 컴포넌트에 ErrorBoundary를 설정하면 error fallback을 위해 `errorLoadRemote` hook에 의존하지 않아도 됩니다. React 자체 기능으로 컴포넌트에 error fallback을 제공할 수 있기 때문입니다.
+
+
+- `App.tsx`에서 dynamic import로 remote module 불러오기
+
+```tsx
+// App.tsx
+import React, {
+  useRef,
+  useEffect,
+  ForwardRefExoticComponent,
+  Suspense,
+} from 'react';
+
+const Remote1AppWithLoadRemote = React.lazy(() => loadRemote('remote1/app'));
+const Remote1AppWithErrorBoundary = React.forwardRef<any, any>((props, ref) => (
+  <ErrorBoundary fallback={<div>Error loading Remote1App...</div>}>
+    <Suspense fallback={<div> Loading Remote1App...</div>}>
+      <Remote1AppWithLoadRemote {...props} ref={ref} />
+      </Suspense>
+    </ErrorBoundary>
+));
+
+export default function App() {
+  return (
+    <>
+      <div className="flex flex-row">
+        <h2>Remote1</h2>
+        <Remote1AppWithErrorBoundary />
+      </div>
+    </>
+  );
+}
+```
+
+
+동작 결과는 다음과 같습니다.
+
+<BlogGifGrid
+  items={[
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/error-boundary-disable.gif",
+      title: "네트워크 요청 차단"
+    },
+    {
+      src: "https://module-federation-assest.netlify.app/document/blog/error-load-remote/error-boundary-enable.gif",
+      title: "차단 후 다시 활성화"
+    }
+  ]}
+/>

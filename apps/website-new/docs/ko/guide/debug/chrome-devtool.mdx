@@ -1,0 +1,151 @@
+# Chrome DevTools
+
+마이크로 프론트엔드 아키텍처는 전통적인 모놀리식 애플리케이션 개발 방식과 다릅니다. 개발, 배포, 디버깅이 분리되기 때문에 그에 맞는 디버깅 도구가 필요합니다. 예를 들어 개발 중인 모듈이 실제 프로젝트에서 어떻게 동작하는지, producer의 의존성이 host 환경에서 재사용되는지, 현재 페이지에 어떤 모듈이 로드되었는지, 모듈 간 의존성과 데이터 흐름이 어떻게 이어지는지를 확인해야 합니다.
+
+Chrome DevTools는 다음 기능을 제공합니다.
+
+- 온라인 페이지의 remote 모듈을 로컬 모듈로 프록시할 수 있습니다.
+- 온라인 remote 모듈 버전을 바꿔 기능을 빠르게 검증할 수 있습니다.
+- 모듈 의존성 정보를 볼 수 있습니다.
+- 특정 모듈 의존성 정보를 필터링할 수 있습니다.
+- remote, shared, 컴포넌트 준비 신호, 실패 리포트에 대한 Loading Trace를 볼 수 있습니다.
+
+::: tip Chrome DevTools 제한 사항
+
+Chrome DevTools가 제공하는 시각화와 프록시 기능을 사용하려면 `mf-manifest.json`을 사용해야 합니다.
+
+:::
+
+## 사용 시나리오
+
+DevTools는 개발/프로덕션 환경의 다양한 디버깅 요구에 맞는 여러 패널을 제공합니다.
+
+- **Proxy**: 온라인 또는 테스트 환경의 모듈을 로컬 개발 환경으로 프록시할 때 사용합니다.
+  - 로컬 서비스 포트 번호를 지원합니다. 예를 들어 key가 appA이고 value가 `http://localhost:3000/mf-manifest.json`이면 페이지는 3000 포트의 `Module Federation` 콘텐츠를 직접 로드합니다.
+  - `mf-manifest.json` 파일 주소 형식도 지원합니다. 예를 들어 key가 appA이고 value가 `https://xxx/static/mf-manifest.json`이면 페이지는 지정된 주소의 `Module Federation` 콘텐츠를 직접 로드합니다.
+
+- **Module Info**: 현재 페이지에 로드된 모든 federation 모듈의 버전, entry 주소 같은 상세 정보를 확인합니다.
+
+- **Dependency Graph**: 모듈 간 의존 관계를 시각적으로 보여 주어 복잡한 마이크로 프론트엔드 구조를 파악할 수 있게 돕습니다.
+
+- **Shared**: Shared Dependencies 사용 현황을 깊이 있게 분석합니다.
+  - 로드된 shared dependencies와 로드되지 않은 shared dependencies를 확인합니다.
+  - shared dependencies의 버전 재사용 상태(Loaded / Reused)를 분석합니다.
+  - Singleton, Strict Version 같은 설정이 실제로 적용됐는지 확인합니다.
+
+- **Loading Trace**: 현재 페이지의 Module Federation 로딩 과정을 기록합니다.
+  - `loadRemote`와 `loadShare`의 시작, 성공, 실패, 복구 상태를 확인합니다.
+  - 어떤 consumer가 어떤 remote/expose를 로드했는지, 어떤 shared provider/버전이 선택됐는지 볼 수 있습니다.
+  - 페이지가 이미 [Observability Plugin](/plugin/plugins/observability-plugin.html)을 사용 중이면 패널이 해당 리포트를 읽고 `CUSTOM`으로 표시합니다.
+  - 플러그인을 사용하지 않는 페이지라면 `Observe now`를 눌러 현재 탭에 Chrome 수집 플러그인을 임시로 주입할 수 있습니다.
+
+![](https://module-federation-assest.netlify.app/document/guide/chrome-devtools/shared-overview.png)
+
+## 설치 방법
+
+1. [Module Federation 확장 프로그램 상세 페이지](https://chromewebstore.google.com/detail/module-federation/aeoilchhomapofiopejjlecddfldpeom)를 열고 `Add to Chrome` 버튼을 클릭합니다.
+
+![](@public/guide/chrome-devtools/chrome-store-add-devtool.png)
+
+## 사용 방법
+
+이 플러그인은 DevTools 패널을 제공합니다.
+
+- F12로 개발자 도구를 열고 `Module Federation` 탭을 선택하면 프록시 페이지에서 의존 모듈을 디버깅할 수 있습니다.
+![](https://module-federation-assest.netlify.app/document/guide/chrome-devtools/launch-devtool.jpg)
+
+## 전체 상호작용
+
+아래와 같이 프록시 페이지는 `add new proxy module`, `producer selector`, `version or local port or custom entry` 같은 옵션을 제공합니다.
+
+- `producer selector`에서 대상 페이지가 프록시해야 하는 모듈을 선택합니다.
+- `version or local port`에서 지정 주소를 선택하거나 입력합니다. 포트 번호와 `mf-manifest.json`으로 끝나는 주소를 사용할 수 있습니다.
+- 여러 모듈을 동시에 프록시해야 한다면 `add new proxy module` 영역을 클릭해 프록시 모듈을 추가합니다.
+- **여러 탭 격리 지원**: Module Federation을 사용하는 페이지를 여러 탭에서 동시에 열어도 각 탭의 프록시 규칙과 모듈 정보는 독립적으로 관리됩니다. 탭 A에서 설정한 프록시 규칙은 탭 B에 영향을 주지 않으며 반대도 마찬가지입니다. 여러 환경이나 애플리케이션 상태를 동시에 디버깅할 때 유용합니다.
+
+![](https://module-federation-assest.netlify.app/document/guide/chrome-devtools/proxy.png)
+
+## 로딩 Trace
+
+`Loading Trace` 탭은 Module Federation 로딩 중 실제로 어떤 일이 일어났는지 보여 줍니다. 페이지가 비어 있거나, 컴포넌트가 계속 로딩 상태에 머물거나, 공유 버전이 불명확하거나, producer가 간헐적으로 실패할 때 사용하세요.
+
+![](https://module-federation-assest.netlify.app/document/guide/chrome-devtools/loading-trace-overview-en.png)
+
+상단 상태는 다음을 의미합니다.
+
+- `OFF`: 현재 페이지에서 읽을 수 있는 로딩 리포트를 찾지 못했습니다.
+- `ON`: 현재 탭에 Chrome 수집 기능이 활성화되어 있습니다.
+- `CUSTOM`: 검사 중인 페이지가 자체 observability 플러그인을 이미 등록했고, DevTools가 그 리포트를 읽고 있습니다.
+
+일반적인 사용 흐름은 다음과 같습니다.
+
+1. 대상 페이지를 엽니다.
+2. Chrome DevTools를 열고 `Module Federation` 패널을 선택합니다.
+3. `Loading Trace`를 엽니다.
+4. 상태가 `OFF`라면 `Observe now`를 클릭합니다. 페이지가 한 번 다시 로드됩니다.
+5. 문제를 재현하거나 확인하려는 remote 컴포넌트 로드를 실행합니다.
+6. 리포트를 선택하고 현재 로딩, 이전 로딩 기록, 이벤트 타임라인, 문제 해결 제안을 확인합니다.
+7. `Export`를 클릭해 전체 리포트를 저장합니다.
+
+리포트 상태는 다음과 같습니다.
+
+- `Success`: MF 로딩 체인이 완료됐습니다. remote 리포트는 remote 결과를 보여 주고, 공유 리포트는 선택된 provider와 버전을 보여 줍니다.
+- `Failed`: 로딩 체인이 실패했습니다. 실패한 단계, error 코드, 제안된 조치부터 확인하세요.
+- `Pending`: `start` 이벤트는 기록됐지만 `completion`, `failure`, `recovery` 이벤트가 아직 보이지 않는 상태입니다.
+- `Recovered`: 로딩 중 문제가 발생했지만 fallback 또는 recovery를 통해 계속 진행된 상태입니다.
+- `Basic observability`: runtime 버전이 너무 낮거나 감지되지 않아 세부 단계가 없을 수 있습니다.
+
+### Export한 리포트 분석
+
+Export한 JSON에는 `config`, `scopes`, `reports`가 포함됩니다. 각 리포트에서는 다음 항목부터 확인하세요.
+
+![](https://module-federation-assest.netlify.app/document/guide/chrome-devtools/loading-trace-shared-report-en.png)
+
+- `diagnosis`: 문제 해결 결론, 확인된 사실, 다음 조치입니다.
+- `summary`: `runtime-loaded`, `component-loaded`, `shared-resolved`, `failed`, `recovered`, `pending` 같은 최종 상태입니다.
+- `remote` / `shared`: 무엇이 로드됐는지 보여 줍니다. 공유 리포트에서는 provider, required version, selected version, available version을 확인하세요.
+- `loadedBefore`: 동일 producer가 다른 consumer에 의해 이미 로드된 적이 있는지 나타냅니다.
+- `events`: 순서대로 정리된 타임라인입니다. 어느 단계에서 멈췄는지 찾는 데 유용합니다.
+
+Export한 리포트는 AI 코딩 에이전트에게 그대로 전달할 수 있습니다.
+
+```text
+/mf obs
+
+Chrome DevTools에서 export한 MF Loading Trace 리포트가 있습니다.
+로드가 성공했는지, 어디서 실패했는지, 누가 이슈를 맡아야 할 가능성이 높은지, 어떻게 고치면 되는지 알려 주세요.
+
+<export한 JSON 붙여넣기>
+```
+
+
+## 로컬 개발 모듈을 온라인 페이지에 프록시하기
+
+- 먼저 producer를 로컬에서 시작합니다.
+
+![](@public/guide/chrome-devtools/dev-to-proxy.png)
+
+- 그런 다음 프록시 페이지의 version 선택 입력란에 정상 동작하는 manifest 주소를 입력합니다.
+- 이후 로컬 producer 코드를 수정하면 consumer 페이지가 자동으로 다시 로드됩니다.
+
+![](@public/guide/chrome-devtools/proxy-to-local.png)
+
+## FAQ
+
+### 여러 탭 격리 디버깅을 지원하나요?
+
+네. 여러 탭을 동시에 열어 디버깅할 때 Chrome DevTools 플러그인은 현재 활성 탭을 자동으로 식별하고, 각 탭의 프록시 규칙을 독립적으로 저장합니다.
+
+- **독립 저장**: 탭 A의 프록시 설정은 탭 A에만 영향을 줍니다. 탭 B로 전환하면 패널은 탭 B의 설정을 자동으로 로드합니다.
+- **상태 유지**: 여러 탭이 같은 URL을 로드하더라도 프록시 상태는 물리적으로 분리되어 서로 간섭하지 않습니다.
+- **자동 전환**: DevTools의 "Focus Tab" 태그를 클릭하면 현재 디버깅 중인 대상 페이지를 확인할 수 있습니다.
+
+### 설정은 언제 적용되나요?
+
+- ✅ 검증 규칙과 일치합니다.
+- ✅ 설정 규칙이 체크되어 있습니다.
+- ✅ 설정이 올바르게 입력되었고, 페이지에 다음 메시지가 표시됩니다: Proxy 설정이 적용되었고 remote 모듈을 성공적으로 가져왔으며 해당 페이지가 자동으로 새로고침되었습니다.
+
+### 일부 설정이 규칙과 일치하는 경우
+
+플러그인은 프록시 대상 중 **설정 규칙과 일치하는 모듈**을 필터링합니다.

@@ -1,0 +1,133 @@
+---
+pageType: doc-wide
+sidebar: false
+---
+
+# Skills
+
+Module Federation은 하나의 통합 **`mf` skill**을 제공합니다.
+
+여러 skill 중 무엇을 골라야 할지 고민하거나, 사용자가 문서를 먼저 읽은 뒤 다시 에이전트에게 설명할 필요가 없습니다. `mf` 하나를 설치하면 에이전트가 상황에 맞게 문서를 읽고, 설정을 살펴보고, 문제를 진단할 수 있습니다.
+
+아직 읽지 않았다면 [AI 빠른 시작](/ai/index.html)을 먼저 확인하세요.
+
+## 설치
+
+```bash
+npx skills add module-federation/agent-skills --skill mf -y
+```
+
+설치 후에는 다음 형식으로 사용합니다.
+
+```text
+/mf <sub-command or question>
+```
+
+CLI를 사용할 수 없다면 GitHub에서 디렉터리를 직접 복사해 사용할 수도 있습니다.
+
+```text
+https://github.com/module-federation/agent-skills/tree/main/skills/mf
+```
+
+## 사용 방법
+
+`mf`는 하나의 진입점을 사용하지만 여러 기능을 포함합니다. 하위 명령을 명시해도 되고, 자연어로 바로 요청해도 됩니다.
+
+하위 명령을 사용하는 예:
+
+```text
+/mf docs How do I use Module Federation in Modern.js?
+/mf integrate
+/mf type-check
+/mf runtime-error RUNTIME-008
+/mf observability
+```
+
+자연어로 요청하는 예:
+
+```text
+/mf What's the difference between singleton and requiredVersion in shared?
+/mf Help me figure out why this project is not pulling remote types
+/mf Add Module Federation to the current project
+/mf I saw a Module Federation console error with traceId mf-...
+```
+
+## `mf`가 지원하는 기능
+
+| 하위 명령 | 용도 |
+| --- | --- |
+| `docs` | 최신 문서를 먼저 읽고 설정, API, 개념 질문에 답변 |
+| `context` | 현재 프로젝트의 MF 설정 확인 |
+| `module-info` | remote 모듈 URL, 노출된 모듈, 관련 메타데이터 확인 |
+| `integrate` | 기존 프로젝트에 Module Federation 추가 |
+| `type-check` | 타입 관련 문제 진단 |
+| `shared-deps` | shared dependencies 충돌과 중복 번들링 문제 진단 |
+| `perf` | 느린 로컬 개발 환경과 느린 HMR 문제 진단 |
+| `config-check` | 설정 실수, 누락된 파일, 플러그인 불일치 문제 진단 |
+| `bridge-check` | Bridge 통합 문제 진단 |
+| `runtime-error` | `RUNTIME-001`, `RUNTIME-008` 같은 명시적인 런타임 에러 코드 진단 |
+| `observability` | observability 리포트를 읽고 런타임/빌드 로딩 단계를 추적 |
+
+## 자주 쓰는 흐름
+
+### 1. 답변 전에 문서 읽기
+
+가장 흔하게 쓰는 방식이며, 시작점으로도 좋습니다.
+
+```text
+/mf docs What's the difference between singleton and requiredVersion in shared?
+```
+
+이렇게 요청하면 에이전트가 오래된 기억에 의존하지 않고 최신 문서를 먼저 읽은 뒤 답합니다.
+
+### 2. 에이전트에게 통합 맡기기
+
+기존 프로젝트에 Module Federation을 추가하려면 다음처럼 요청합니다.
+
+```text
+/mf integrate
+```
+
+에이전트가 현재 프로젝트를 살펴보고 다음에 무엇을 해야 하는지 판단합니다.
+
+### 3. 문제를 바로 진단하게 하기
+
+이미 구체적인 문제가 있다면 다음 명령을 사용할 수 있습니다.
+
+```text
+/mf type-check
+/mf shared-deps
+/mf config-check
+/mf runtime-error RUNTIME-008
+/mf observability
+```
+
+이 단계에서는 사용자가 먼저 원인을 수동으로 조사하는 것이 목적이 아닙니다. 에이전트가 바로 진단을 시작하도록 만드는 것이 목적입니다.
+
+### 4. MF observability 읽기
+
+전체 loading observability가 필요하면 앱에 [Observability Plugin](/plugin/plugins/observability-plugin.html)을 설치하세요. 브라우저 콘솔 에러에 `traceId`와 `read:` 명령이 출력되면 이를 skill에 전달합니다.
+
+```text
+/mf observability
+Module Federation 콘솔 에러를 확인했습니다.
+
+[Module Federation] Observability report generated
+traceId: mf-...
+read: window.__FEDERATION__.__OBSERVABILITY__["runtime_host"].getReport("mf-...")
+
+리포트를 읽고 문제를 수정해 주세요.
+```
+
+Node, SSR 또는 프로덕션에 업로드된 리포트를 볼 때는 다음처럼 요청할 수 있습니다.
+
+```text
+/mf observability
+.mf/observability/latest.json을 읽고, 누가 이슈를 맡아야 할 가능성이 높은지와 수정 방법을 설명해 주세요.
+```
+
+## 꼭 기억할 점
+
+사용자가 문서를 먼저 읽고 에이전트에게 다시 설명할 필요는 없습니다.
+
+`mf`를 설치한 뒤, 에이전트가 문서를 읽고, 설정을 살펴보고, 판단하고, 실행하게 하세요.

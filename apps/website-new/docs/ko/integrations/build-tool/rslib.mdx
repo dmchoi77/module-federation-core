@@ -1,0 +1,75 @@
+# Rslib
+
+Rslib은 `@module-federation/rsbuild-plugin`을 사용해 Module Federation producer를 빌드할 수 있습니다. 컴포넌트 라이브러리, 비즈니스 모듈, SSR producer를 다른 앱에서 소비할 수 있는 독립 산출물로 배포해야 할 때 적합합니다.
+
+## 빠른 시작
+
+### 설치
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm add @module-federation/rsbuild-plugin --save-dev',
+    yarn: 'yarn add @module-federation/rsbuild-plugin --save-dev',
+    pnpm: 'pnpm add @module-federation/rsbuild-plugin --save-dev',
+    bun: 'bun add @module-federation/rsbuild-plugin --save-dev',
+  }}
+/>
+
+### 플러그인 등록
+
+```ts title='rslib.config.ts'
+import { pluginModuleFederation } from '@module-federation/rsbuild-plugin';
+import { defineConfig } from '@rslib/core';
+
+export default defineConfig({
+  lib: [
+    {
+      format: 'mf',
+      output: {
+        distPath: {
+          root: './dist/mf',
+        },
+        assetPrefix: 'https://example.com/mf/',
+      },
+      plugins: [
+        pluginModuleFederation({
+          name: 'rslib_provider',
+          exposes: {
+            '.': './src/index.tsx',
+          },
+          shared: {
+            react: {
+              singleton: true,
+            },
+            'react-dom': {
+              singleton: true,
+            },
+          },
+        }),
+      ],
+    },
+  ],
+});
+```
+
+## SSR
+
+브라우저용 산출물과 Node.js용 산출물을 모두 빌드해야 한다면 플러그인 옵션에 `target: 'dual'`을 사용하세요.
+
+```ts title='rslib.config.ts'
+pluginModuleFederation(
+  {
+    name: 'rslib_provider',
+    exposes: {
+      '.': './src/index.tsx',
+    },
+  },
+  {
+    target: 'dual',
+  },
+);
+```
+
+전체 플러그인 옵션은 [Rsbuild plugin configuration](/integrations/build-tool/rsbuild.html#rsbuildoptions)을 참고하세요.

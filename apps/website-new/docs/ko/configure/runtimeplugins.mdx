@@ -1,0 +1,104 @@
+# runtimePlugins
+
+- 타입: `string[] | Array<[string, Record<string, unknown>]>`
+- 필수: 아니요
+- 기본값: `undefined`
+
+`runtimePlugins` 설정은 런타임에 필요한 추가 플러그인을 등록할 때 사용합니다. 값은 다음 형태를 사용할 수 있습니다.
+
+- 특정 플러그인 경로를 나타내는 문자열(절대 경로, 상대 경로, 패키지 이름)
+- 문자열 또는 `[string path, object options]` 튜플로 구성된 배열
+
+Hook 선택과 플러그인 작성 흐름이 궁금하다면 [Runtime Plugins](/guide/runtime/runtime-plugins.html)를 참고하세요. 전체 Hook 레퍼런스는 [Runtime Hooks](/guide/runtime/runtime-hooks.html)에서 볼 수 있습니다. 더 낮은 수준의 플러그인 작성 방법은 [Plugin System](/plugin/dev/index.html)을 확인하세요.
+
+설정이 추가되면 런타임 플러그인은 빌드 과정에서 자동으로 주입되어 사용됩니다.
+
+**기본 사용법:**
+
+런타임 플러그인 파일은 예를 들어 `custom-runtime-plugin.ts`처럼 만들 수 있습니다.
+
+```ts title="custom-runtime-plugin.ts"
+import { ModuleFederationRuntimePlugin } from '@module-federation/enhanced/runtime';
+
+export default function (): ModuleFederationRuntimePlugin {
+  return {
+    name: 'custom-plugin-build',
+    beforeInit(args) {
+      console.log('[build time inject] beforeInit: ', args);
+      return args;
+    },
+    beforeLoadShare(args) {
+      console.log('[build time inject] beforeLoadShare: ', args);
+      return args;
+    },
+  };
+}
+```
+
+그다음 빌드 설정에 이 플러그인을 적용합니다.
+
+```ts title="rspack.config.ts"
+const path = require('path');
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'host',
+      remotes: {
+        'manifest-provider':
+          'manifest_provider@http://localhost:3011/mf-manifest.json',
+      },
+      runtimePlugins: [path.resolve(__dirname, './custom-runtime-plugin.ts')],
+    }),
+  ],
+};
+```
+
+**옵션 전달:**
+
+Tuple 형식을 사용하면 런타임 플러그인에 옵션도 전달할 수 있습니다.
+
+```ts title="rspack.config.ts"
+const path = require('path');
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'host',
+      remotes: {
+        'manifest-provider':
+          'manifest_provider@http://localhost:3011/mf-manifest.json',
+      },
+      runtimePlugins: [
+        path.resolve(__dirname, './custom-runtime-plugin.ts'),
+        [
+          path.resolve(__dirname, './another-plugin.ts'),
+          {
+            debug: true,
+            timeout: 5000,
+            customConfig: 'value'
+          }
+        ]
+      ],
+    }),
+  ],
+};
+```
+
+플러그인은 전달된 옵션에 접근할 수 있습니다.
+
+```ts title="another-plugin.ts"
+import { ModuleFederationRuntimePlugin } from '@module-federation/enhanced/runtime';
+
+export default function (options: any): ModuleFederationRuntimePlugin {
+  console.log('Plugin options:', options);
+
+  return {
+    name: 'another-plugin',
+    beforeInit(args) {
+      if (options.debug) {
+        console.log('[debug] beforeInit: ', args);
+      }
+      return args;
+    },
+  };
+}
+```

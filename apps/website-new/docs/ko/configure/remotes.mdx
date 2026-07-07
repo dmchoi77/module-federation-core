@@ -1,0 +1,77 @@
+# remotes
+
+- 타입: `PluginRemoteOptions`
+- 필수: 아니요
+- 기본값: `undefined`
+- 사용법: <code>{props.brandName || props.name || 'Module Federation'}</code>에서 producer 모듈을 사용할 때 설정합니다.
+
+:::tip
+consumer에서만 사용하는 매개변수입니다. `remotes`가 설정되어 있다면 해당 애플리케이션을 consumer로 볼 수 있습니다.
+:::
+
+`PluginRemoteOptions` 타입은 다음과 같습니다.
+
+```tsx
+type ModuleFederationInfo = string;
+type ShareScope = string | string[];
+
+type RemoteConfig = {
+  external: ModuleFederationInfo | ModuleFederationInfo[];
+  shareScope?: ShareScope;
+};
+
+interface PluginRemoteOptions {
+  [remoteAlias: string]: ModuleFederationInfo | RemoteConfig;
+}
+```
+
+- `remoteAlias`는 consumer가 실제로 참조할 때 사용하는 이름이며, 필요에 맞게 설정할 수 있습니다. 예를 들어 `remoteAlias`가 `demo`라면 `import xx from 'demo'`처럼 사용합니다.
+- `ModuleFederationInfo`는 `ModuleFederation name` + `@` + `ModuleFederation entry`로 구성됩니다.
+  - `ModuleFederation name`은 producer가 설정한 이름입니다.
+  - `entry`는 `mf-manifest.json` 또는 `remoteEntry.js`일 수 있습니다.
+  - `entry`가 `mf-manifest.json`이면 다음 추가 기능을 사용할 수 있습니다.
+    - 동적 모듈 타입 힌트
+    - 리소스 프리로딩
+    - Chrome DevTools 디버깅 도구
+
+```js
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'host',
+      // 아래 `remotes`는 두 producer를 정의합니다. 3011 포트 프로젝트는 `manifest-provider`, 3012 포트 프로젝트는 `js-entry-provider`입니다.
+      remotes: {
+        'manifest-provider':
+          'manifest_provider@http://localhost:3011/mf-manifest.json',
+        'js-entry-provider':
+          'js_entry_provider@http://localhost:3012/remoteEntry.js',
+      },
+    }),
+  ],
+};
+```
+
+## shareScope
+
+- 타입: `string | string[]`
+- 필수: 아니요
+- 기본값: `'default'`
+
+consumer가 특정 producer와 어떤 share scope(Share Scope)를 정렬할지 정의합니다. 특정 shared dependency를 `default` 풀에서 분리할 때 유용합니다. 예를 들어 React는 `default`에 두고 내부 디자인 시스템은 `scope1`에 둘 수 있습니다.
+
+```ts
+new ModuleFederationPlugin({
+  name: 'host',
+  remotes: {
+    remote: {
+      external: 'app_remote@http://localhost:2001/remoteEntry.js',
+      shareScope: ['default', 'scope1'],
+    },
+  },
+});
+```
+
+관련 설정:
+
+- producer는 [shareScope](/configure/shareScope.html)로 자신이 초기화할 scope를 선언해야 합니다.
+- 각 shared dependency는 [shared.shareScope](/configure/shared.html#sharescope)로 사용할 scope를 선택합니다.

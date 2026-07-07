@@ -1,0 +1,22 @@
+[
+  {
+    "type": "file",
+    "name": "getting-started",
+    "label": "시작하기"
+  },
+  {
+    "type": "file",
+    "name": "export-app",
+    "label": "애플리케이션 내보내기"
+  },
+  {
+    "type": "file",
+    "name": "load-app",
+    "label": "애플리케이션 로드"
+  },
+  {
+    "type": "file",
+    "name": "load-component",
+    "label": "컴포넌트 지연 로드와 프리페치"
+  }
+]

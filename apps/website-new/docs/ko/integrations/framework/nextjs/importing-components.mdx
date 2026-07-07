@@ -1,0 +1,90 @@
+# 컴포넌트 가져오기
+
+remote 모듈은 여러 방식으로 가져올 수 있습니다.
+
+### Lazy / Async Import
+
+#### Default Export
+
+`React.lazy`와 `React.Suspense`를 사용합니다.
+
+:::danger Hydration Errors
+Using `next/dynamic` to import remote 모듈 will cause **Hydration Errors**
+:::
+
+```javascript
+import React, { lazy } from 'react';
+const SampleComponent = lazy(() => import('next2/sampleComponent'));
+
+const FormComponent = ()=>{
+  return (
+    <Suspense fallback="loading">
+      <SampleComponent/>
+    </Suspense>
+  )
+}
+
+export default FormComponent
+```
+
+#### Named Export
+
+Named export를 `React.lazy`와 함께 사용하려면, default export만 기대하는 `React.lazy`에 맞춰 가짜 `default`를 반환해야 합니다.
+
+```javascript
+import React, { lazy } from 'react';
+
+const SampleComponent = lazy(() => import('next2/sampleComponent').then((mod) => {
+  return { default: mod.NamedComponent };
+}));
+
+const FormComponent = () => {
+  return (
+    <Suspense fallback="loading">
+      <SampleComponent />
+    </Suspense>
+  );
+};
+
+export default FormComponent;
+```
+
+### Eager / Sync Import
+
+Eager import도 동작하지만, 초기 네트워크 전송량이나 요청이 커지는 것을 피하려면 가능하면 동적 import를 사용하는 것이 좋습니다.
+
+```javascript
+let SomeHook = require('next2/someHook');
+SomeHook = SomeHook.default || SomeHook;
+
+import SomeComponent, {NamedExportComponent} from 'next2/sampleComponent';
+```
+### Client Side Only
+
+어떤 경우에는 remote 모듈을 클라이언트에서만 로드하고 싶을 수 있습니다.
+
+예를 들어 remote가 commonjs와 browser 빌드 target을 모두 제공하지 않는 경우가 있습니다.
+
+Node는 commonjs 형식의 remoteEntry가 필요하므로, browser 전용 remote를 서버에 제공할 수 없습니다.
+
+```jsx
+import {lazy, Suspense, useEffect, useState} from 'react';
+
+const RemoteModule = typeof window === 'undefined' ? ()=>{} : lazy(() => import('app3/sampleComponent'));
+
+const ClientOnly = ({Component}) => {
+  const [mounted, setMount] = useState(false);
+  useEffect(() => {
+    setMount(true);
+  }, []);
+  if (!mounted) return null;
+  return (
+    <Suspense fallback="loading">
+      <Component />
+    </Suspense>
+  );
+};
+
+const App = ()=>{
+  return <ClientOnly Component={RemoteModule} />
+}

@@ -1,0 +1,25 @@
+# implementation
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `undefined`
+
+`implementation` 옵션은 실제 번들러 런타임 버전을 바꿀 때 사용합니다. 값은 `@module-federation/runtime-tools`의 경로로 설정해야 합니다.
+
+Module Federation에서 runtime은 remote 모듈의 로딩과 공유를 처리합니다. 기본적으로 번들러는 자기 버전과 호환되는 runtime 버전을 사용합니다. 하지만 경우에 따라 다른 runtime 버전이나 커스텀 구현체를 사용해야 할 수 있습니다.
+
+`implementation` 옵션을 지정하면 원하는 runtime 구현체의 경로를 직접 제공할 수 있습니다. Bundler가 기본 제공하는 버전에 없는 기능을 새 runtime 또는 오래된 runtime에서 사용해야 할 때 유용합니다.
+
+예를 들어 특정 버전의 `@module-federation/runtime-tools`를 사용하려면 설정 파일에서 `implementation` 옵션을 다음처럼 지정합니다.
+
+```javascript
+module.exports = {
+  // ...other configurations
+  plugins: [
+    new ModuleFederationPlugin({
+      // ...other Module Federation options
+      implementation: require.resolve('@module-federation/runtime-tools'),
+    }),
+  ],
+};
+```

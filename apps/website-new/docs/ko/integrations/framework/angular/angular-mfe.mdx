@@ -1,0 +1,334 @@
+---
+title: "Angular로 마이크로 프론트엔드 구성하기"
+---
+
+import {Steps, Tabs, Tab} from '@theme';
+
+# Angular와 Webpack Module Federation으로 마이크로 프론트엔드 구성하기
+
+## 개요
+
+Module Federation은 마이크로 프론트엔드 생태계에 큰 영향을 주었습니다. Angular와 함께 사용하면 분산 프런트엔드 아키텍처를 위한 견고하고 확장 가능한 솔루션을 만들 수 있습니다. 이 가이드는 Angular shell(host)과 remote 애플리케이션에서 Webpack `ModuleFederationPlugin`을 설정하는 실제 예제를 다룹니다.
+
+
+### 사전 준비
+
+설정을 시작하기 전에 다음 항목을 확인하세요.
+
+- **Node.js와 npm:** Node.js와 npm이 설치되어 있어야 합니다.
+- **Angular와 Webpack 지식:** Angular와 Webpack에 대한 기본 이해가 필요합니다.
+- **Module Federation:** Module Federation에 익숙하다고 가정합니다.
+
+## 준비 단계
+
+<Steps>
+
+### Webpack 5를 사용하도록 강제
+
+Angular CLI 프로젝트는 보통 Webpack이 미리 설정되어 있지만, Module Federation을 제대로 지원하려면 Webpack 5를 사용하도록 명시해야 합니다.
+
+<Tabs>
+<Tab label="Yarn">
+  `package.json`을 열고 Webpack 5를 강제로 사용하도록 `resolutions` 키를 추가합니다.
+  ```json title="package.json"
+  {
+    "resolutions": {
+      "webpack": "^5.0.0"
+    }
+  }
+  ```
+</Tab>
+<Tab label="Npm">
+  npm은 `resolutions` key를 기본 지원하지 않습니다. <br/>
+  이 경우에는 Yarn을 패키지 매니저로 사용하는 것을 권장합니다.<br/>
+  또는 `npm-force-resolutions` 패키지를 시도해 볼 수 있지만, 이 구성에서 충분히 검증된 방식은 아닙니다.
+</Tab>
+</Tabs>
+
+
+### Angular CLI에 패키지 매니저 지정
+
+
+```json title="angular.json"
+{
+  "cli": {
+    "packageManager": "yarn"
+  }
+}
+```
+
+
+
+### 커스터마이징 가능한 Webpack 설정 추가
+
+Webpack 설정을 노출하는 방법은 여러 가지가 있습니다. 예를 들어 `Ngx-build-plus`나 `@angular-builders/custom-webpack`을 사용할 수 있습니다.
+
+이 예제에서는 후자인 `@angular-builders/custom-webpack`을 사용합니다.
+
+먼저 패키지를 설치합니다.
+
+```bash
+yarn add @angular-builders/custom-webpack -D
+# or
+npm i -D @angular-builders/custom-webpack
+```
+
+그 다음 `angular.json` 파일을 업데이트해 `build`와 `serve` 명령 모두에서 이 사용자 정의 builder를 사용하도록 합니다.
+
+```json title="angular.json"
+{
+  "projects": {
+    "your-project-name": {
+      "architect": {
+        "build": {
+          "builder": "@angular-builders/custom-webpack:browser",
+          "options": {
+            "customWebpackConfig": {
+              "path": "webpack.config.ts"
+            }
+          }
+        },
+        "serve": {
+          "builder": "@angular-builders/custom-webpack:dev-server"
+        }
+      }
+    }
+  }
+}
+```
+
+<div className={"rspress-directive tip"}>
+ 사용자 정의 Webpack 설정은 Angular 기본 설정과 병합됩니다. 따라서 Module Federation에 필요한 변경 사항만 지정하면 됩니다.
+</div>
+
+</Steps>
+
+## shell(host) 애플리케이션을 위한 Webpack 설정
+
+<Steps>
+
+### 고유한 출력 이름 설정
+
+Webpack은 기본적으로 `package.json`의 이름을 사용합니다. 하지만 특히 monorepo에서는 충돌을 피하기 위해 고유한 이름을 직접 정의하는 것이 좋습니다.
+
+
+
+```javascript title="webpack.config.ts"
+config.output.uniqueName = 'shell';
+```
+:::tip
+참고: 모노레포를 사용하지 않고 `package.json`에 이미 고유한 이름이 있다면 이 단계는 건너뛰어도 됩니다.
+:::
+
+### `runtimeChunk` 최적화
+
+
+현재 알려진 버그 때문에 `runtimeChunk` 최적화는 반드시 `false`로 설정해야 합니다. 그렇지 않으면 Module Federation 구성이 깨질 수 있습니다.
+
+
+```javascript title="webpack.config.ts"
+config.optimization.runtimeChunk = false;
+```
+
+### Module Federation 플러그인 추가
+
+
+`webpack.config.ts`의 plugins 배열에 `ModuleFederationPlugin`을 추가합니다.
+
+```typescript title="webpack.config.ts"
+import { CustomWebpackBrowserSchema, TargetOptions } from '@angular-builders/custom-webpack';
+import { Configuration, container } from 'webpack';
+
+export default (config: Configuration, options: CustomWebpackBrowserSchema, targetOptions: TargetOptions) => {
+  // ... existing configuration
+  config.plugins.push(
+    new container.ModuleFederationPlugin({
+      remotes: {
+        'mf1': 'mf1@http://localhost:4300/mf1.js'
+      },
+      shared: {
+        '@angular/animations': {singleton: true, strictVersion: true},
+        '@angular/core': {singleton: true, strictVersion: true},
+        // ... other shared modules
+      }
+    })
+  );
+
+  return config;
+};
+```
+
+여기서 `remotes` 객체는 remote 모듈 이름을 해당 위치에 매핑합니다. 키(`mf1`)는 shell 애플리케이션에서 모듈을 import할 때 사용하는 이름이고, 값은 remote 파일의 위치입니다. 이 예제에서는 `http://localhost:4300/mf1.js`입니다.
+
+</Steps>
+## remote 모듈/애플리케이션 설정
+
+<Steps>
+
+### 고유한 출력 이름 설정과 `runtimeChunk` 비활성화
+
+shell 애플리케이션과 마찬가지로 고유한 출력 이름을 정의하고 `runtimeChunk` 최적화를 비활성화합니다.
+
+```typescript
+config.output.uniqueName = 'contact';
+config.optimization.runtimeChunk = false;
+```
+
+### Module Federation 플러그인 추가
+
+`ModuleFederationPlugin`을 다음과 같이 설정합니다.
+
+```typescript
+import { CustomWebpackBrowserSchema, TargetOptions } from '@angular-builders/custom-webpack';
+import { Configuration, container } from 'webpack';
+import * as path from 'path';
+
+export default (config: Configuration, options: CustomWebpackBrowserSchema, targetOptions: TargetOptions) => {
+  // ... existing configuration
+
+  config.plugins.push(
+    new container.ModuleFederationPlugin({
+      filename: "mf1.js",
+      name: "mf1",
+      exposes: {
+        './Contact': path.resolve(__dirname, './src/app/contact/contact.module.ts'),
+        './Clock': path.resolve(__dirname, './src/app/clock/index.ts'),
+      },
+      shared: {
+        '@angular/animations': {singleton: true, strictVersion: true},
+        // ... other shared modules
+      }
+    })
+  );
+
+  return config;
+};
+```
+
+여기서 `filename`과 `name` 속성은 JavaScript 파일 이름과 전역 `window` 객체에서 모듈 컨테이너가 사용할 네임스페이스를 지정합니다. shell 애플리케이션이 remote 모듈을 로드할 때 사용하는 값과 정확히 일치해야 합니다.
+
+### 모듈 노출
+
+`exposes` 객체는 내보낼 모듈을 지정합니다. 이 예제에서는 다음을 노출합니다.
+
+- `./Contact`는 하위 라우트를 포함한 Angular `NgModule`을 export합니다.
+- `./Clock`은 런타임 렌더링에 사용할 Angular 컴포넌트를 export합니다.
+
+</Steps>
+
+## Angular 라우팅
+
+
+### Remote Modules 선언
+
+remote modules는 런타임에 동적으로 로드되므로, 사용하기 전에 TypeScript에 해당 모듈이 존재한다고 알려야 합니다.
+
+라우팅 모듈 옆에 새 TypeScript 정의 파일 `remote-modules.d.ts`를 만듭니다.
+
+```typescript
+declare module 'mf1/Contact';
+declare module 'mf1/Clock';
+```
+
+### Lazy-Loading Remote Modules in Routes
+
+일반 lazy-loaded modules를 사용할 때처럼 Angular 라우팅 설정에서 remote modules를 import할 수 있습니다.
+
+라우트 설정을 다음처럼 수정합니다.
+
+```typescript
+const routes: Routes = [
+  {
+    path: '',
+    loadChildren: () => HomeModule
+  },
+  {
+    path: 'contact',
+    loadChildren: () => import('mf1/Contact').then(m => m.ContactModule)
+  },
+  // ... other routes
+];
+```
+
+## Dynamic Component Creation of Remote Modules
+
+remote modules에서 컴포넌트를 동적으로 생성하면 한 단계 더 높은 수준의 통합을 구현할 수 있습니다.
+이를 위해 동적 렌더링을 처리하는 서비스와 디렉티브를 설정합니다.
+
+### Remote Module Loader Service
+
+이 서비스는 remote modules를 동적으로 로드하고 component factories를 해석하는 역할을 합니다.
+
+```typescript
+@Injectable({
+  providedIn: 'root'
+})
+export class RemoteModuleLoader {
+  constructor(private _componentFactoryResolver: ComponentFactoryResolver) {}
+
+  async loadRemoteModule(name: string) {
+    const [scope, moduleName] = name.split('/');
+    const moduleFactory = await window[scope].get('./' + moduleName);
+    return moduleFactory();
+  }
+
+  getComponentFactory(component: Type<unknown>): ComponentFactory<unknown> {
+    return this._componentFactoryResolver.resolveComponentFactory(component);
+  }
+}
+```
+
+### Remote Component Renderer Directive
+
+이 structural directive는 Remote Module Loader Service에서 얻은 component factory를 사용해 자신의 view container 안에 컴포넌트를 동적으로 생성합니다.
+```typescript
+@Directive({
+  selector: '[remoteComponentRenderer]'
+})
+export class RemoteComponentRenderer implements OnInit {
+  @Input() set remoteComponentRenderer(componentName: string) { /* ... */ }
+  @Input() set remoteComponentRendererModule(moduleName: RemoteModule) { /* ... */ }
+
+  // ... other code
+
+  private async renderComponent() {
+    const module = await this.remoteModuleLoaderService.loadRemoteModule(this._moduleName);
+    const componentFactory = this.remoteModuleLoaderService.getComponentFactory(module[this._componentName]);
+    this.viewContainerRef.createComponent(componentFactory, undefined, this.injector);
+  }
+}
+```
+
+#### 뷰에서 사용하기
+
+Angular 뷰에서는 디렉티브를 다음처럼 사용할 수 있습니다.
+```html
+<ng-container *remoteComponentRenderer="'ClockComponent'; module:'mf1/Clock'"></ng-container>
+```
+
+## Shared Dependencies
+
+#### Shared Dependencies의 중요성
+
+Webpack 설정의 `shared` 섹션은 shell과 remote 모듈에서 공통으로 사용하는 모듈을 정의하는 핵심 역할을 합니다. 공통 모듈을 공유하면 번들 크기를 크게 줄이고 사용자 경험을 개선할 수 있습니다.
+
+#### 버전 불일치 처리
+
+shell과 remote 앱 사이에 메이저 버전이 맞지 않으면 Webpack이 런타임 오류를 발생시킬 수 있습니다. 공유 `singleton`을 사용할 때는 일관된 버전 동기화가 중요합니다.
+
+#### 시맨틱 버전 관리와 유연성
+
+Webpack은 shared dependencies를 해석할 때 semantic versioning을 따릅니다. `^`나 `>=` 같은 연산자를 사용해 버전 선택에 어느 정도 유연성을 두는 것이 좋습니다. 이렇게 하면 필요한 버전만 로드되어, 서로 충돌하는 여러 버전의 라이브러리가 함께 로드될 위험을 줄일 수 있습니다.
+
+
+## 요약
+
+이 가이드에서는 Webpack Module Federation을 활용해 Angular 애플리케이션에 remote 모듈을 동적으로 통합하는 방법을 살펴봤습니다. 구체적으로 다음 내용을 다뤘습니다.
+
+- Yarn을 패키지 매니저로 설정하는 방법
+- Angular 빌드를 위한 Webpack 설정 커스터마이징
+- Shell과 마이크로 프론트엔드 애플리케이션에서 Module Federation 사용
+- Angular 라우팅에서 remote modules lazy-loading
+- remote modules에서 컴포넌트 동적 생성
+
+프로덕션에 바로 사용할 수 있는 구성을 만들려면 추가 단계가 필요하며, 이후 가이드에서 다룰 예정입니다. 이 기법에 대해 궁금한 점이 있다면 소셜 채널을 통해 문의해 주세요.

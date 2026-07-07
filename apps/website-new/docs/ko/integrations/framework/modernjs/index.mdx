@@ -1,0 +1,201 @@
+# Modern.js 통합 개요
+
+import { Badge } from '@theme';
+
+[Modern.js](https://modernjs.dev/guides/get-started/introduction.html)는 React 기반의 프로그레시브 웹 개발 프레임워크입니다. ByteDance 내부에서는 수천 개의 웹 애플리케이션 개발에 Modern.js가 사용됩니다.
+
+Module Federation 팀은 Modern.js 팀과 긴밀하게 협업하고 있으며, Modern.js에서 Module Federation을 사용할 수 있도록 `@module-federation/modern-js-v3`와 `@module-federation/modern-js`를 제공합니다.
+
+가능하다면 Modern.js v3로 업그레이드하고 `@module-federation/modern-js-v3`를 먼저 사용하는 것을 권장합니다.
+
+## 지원 범위
+
+- Modern.js v3: `@module-federation/modern-js-v3` 사용(권장)
+- Modern.js v2.56.1 이상: `@module-federation/modern-js` 사용
+- 서버 사이드 렌더링(SSR) 포함
+
+Modern.js와 Module Federation을 함께 쓰는 모범 사례는 다음 애플리케이션을 참고하세요.
+
+- [서버 사이드 렌더링(SSR)](https://github.com/module-federation/core/tree/main/apps/modernjs-ssr)
+- [Component-Level Data Fetch](https://github.com/module-federation/core/tree/main/apps/modern-component-data-fetch)
+
+## 빠른 시작
+
+### 설치
+
+Modern.js v3에서는 `@module-federation/modern-js-v3`를 설치합니다.
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm add @module-federation/modern-js-v3 --save',
+    yarn: 'yarn add @module-federation/modern-js-v3 --save',
+    pnpm: 'pnpm add @module-federation/modern-js-v3 --save',
+    bun: 'bun add @module-federation/modern-js-v3 --save',
+  }}
+/>
+
+Modern.js v2를 사용 중이라면 `@module-federation/modern-js`를 설치합니다.
+
+<PackageManagerTabs
+  command={{
+    npm: 'npm add @module-federation/modern-js --save',
+    yarn: 'yarn add @module-federation/modern-js --save',
+    pnpm: 'pnpm add @module-federation/modern-js --save',
+    bun: 'bun add @module-federation/modern-js --save',
+  }}
+/>
+
+### 플러그인 적용
+
+다음 예시는 Modern.js v3 기준입니다. Modern.js v2를 사용한다면 `@module-federation/modern-js-v3`를 `@module-federation/modern-js`로 바꾸세요.
+
+`modern.config.ts`의 `plugins` 섹션에 플러그인을 추가합니다.
+
+```ts title="modern.config.ts"
+import { appTools, defineConfig } from '@modern-js/app-tools';
+import { moduleFederationPlugin } from '@module-federation/modern-js-v3';
+
+export default defineConfig({
+  // moduleFederationPlugin is a plugin for modern.js that can make certain modifications to the build/runtime
+  plugins: [appTools(), moduleFederationPlugin()],
+});
+```
+
+그다음 `module-federation.config.ts` 파일을 만들고 필요한 설정을 추가합니다.
+
+```ts title="module-federation.config.ts"
+import { createModuleFederationConfig } from '@module-federation/modern-js-v3';
+export default createModuleFederationConfig({
+  name: 'host',
+  remotes: {
+    remote: 'remote@http://localhost:3006/mf-manifest.json',
+  },
+  shared: {
+    react: { singleton: true },
+    'react-dom': { singleton: true },
+  },
+});
+```
+
+## Server-Side Rendering(SSR)
+
+:::info 참고
+더 나은 성능 경험을 위해 Module Federation & Modern.js SSR은 stream SSR만 지원합니다.
+:::
+
+SSR 시나리오에서 Module Federation을 사용하는 방식은 CSR과 크게 다르지 않습니다. 기존 개발 방식을 유지하면서 적용할 수 있습니다.
+
+## Component-Level Data Fetch
+
+[Data Fetching](/guide/data/data-fetch.html)을 참고하세요.
+
+Modern.js v3에서는 component-level data fetching이 `@module-federation/modern-js-v3` 플러그인에 내장되어 있습니다. 따라서 이를 사용하기 위해 `@module-federation/bridge-react`를 별도로 설치할 필요가 없습니다.
+
+모든 data fetching API는 `@module-federation/modern-js-v3/data-fetch`에 있습니다. 이 서브패스에서 import해 사용할 수 있습니다.
+
+## Bridge API
+
+[React Bridge](/guide/bridge/react/getting-started.html)를 참고하세요.
+
+Modern.js v3에서는 Bridge API가 `@module-federation/modern-js-v3` 플러그인에 내장되어 있습니다. Bridge API를 사용하기 위해 `@module-federation/bridge-react`를 별도로 설치할 필요가 없습니다.
+
+모든 Bridge API는 `@module-federation/modern-js-v3/react`에 있습니다. React 18 또는 React 19용 `createBridgeComponent` 호출을 명확히 구분해야 한다면 Modern.js v3 플러그인의 export path가 조금 다릅니다.
+
+```ts
+// @module-federation/modern-js-v3
+import { createBridgeComponent } from '@module-federation/modern-js-v3/react'; // React 16/17
+import { createBridgeComponent } from '@module-federation/modern-js-v3/react-v18'; // React 18
+import { createBridgeComponent } from '@module-federation/modern-js-v3/react-v19'; // React 19
+```
+
+## 런타임 API
+
+모든 Module Federation 런타임 API는 `@module-federation/modern-js-v3/runtime`에 있습니다. 이 subpath에서 import해 사용할 수 있습니다.
+
+### createRemoteComponent <Badge type="danger">Deprecated</Badge>
+
+::: danger
+이 API는 deprecated 되었습니다. 대신 [createLazyComponent](/guide/bridge/react/load-component.html#what-is-createlazycomponent)를 사용하세요.
+:::
+
+`createRemoteComponent`와 `createLazyComponent`의 매개변수는 동일합니다. 차이는 `createLazyComponent`는 플러그인을 등록한 뒤 인스턴스를 통해 호출해야 한다는 점입니다.
+
+```diff
+- import { createRemoteComponent } from '@module-federation/modern-js-v3/runtime';
++ import { getInstance } from '@module-federation/modern-js-v3/runtime';
++ import { lazyLoadComponentPlugin } from '@module-federation/modern-js-v3/data-fetch';
+
+const instance = getInstance();
+// lazyLoadComponentPlugin을 등록하면 인스턴스에 createLazyComponent API가 자동으로 추가됩니다.
+instance.registerPlugins([lazyLoadComponentPlugin()]);
+
+- const LazyComponent = createRemoteComponent({
++ const LazyComponent = instance.createLazyComponent({
+  loader: () => import('remote/Image'),
+  loading: <div>loading...</div>,
+  fallback: ({ error }) => {
+    console.error(error)
+    return <div>fallback</div>;
+  },
+});
+
+const App: FC = () => {
+  return <>
+    <LazyComponent />
+  </>;
+};
+export default App;
+```
+
+### createRemoteSSRComponent <Badge type="danger">Deprecated</Badge>
+
+::: danger
+이 API는 deprecated 되었습니다. 대신 [createLazyComponent](/guide/bridge/react/load-component.html#createlazycomponent-vs-createremoteappcomponent)를 사용하세요.
+:::
+
+마이그레이션 방법은 [createRemoteComponent](#createremotecomponent)와 동일합니다.
+
+## 설정
+
+### ssr
+
+- 타입: `false`
+- 필수 여부: 아니요
+- 기본값: `undefined`
+
+`@module-federation/modern-js-v3`는 `modern.js` 설정의 `server.ssr` 값을 기준으로 SSR 관련 빌드 preset을 자동으로 추가합니다.
+
+현재 프로젝트가 CSR에서만 MF를 로드하면 된다면 `ssr: false`를 설정해 점진적으로 마이그레이션할 수 있습니다.
+
+```ts title='modern.config.ts'
+import { appTools, defineConfig } from '@modern-js/app-tools';
+import { moduleFederationPlugin } from '@module-federation/modern-js-v3';
+
+// https://modernjs.dev/ko/configure/app/usage
+export default defineConfig({
+
+  server: {
+    ssr: {
+      mode: 'stream',
+    },
+  },
+  plugins: [
+    appTools(),
+    moduleFederationPlugin({ ssr: false })
+  ],
+});
+```
+
+### fetchServerQuery
+
+- 타입: `Record<string, unknown>`
+- 필수 여부: 아니요
+- 기본값: `undefined`
+
+downgrade가 발생하면 서버로 HTTP 요청을 보냅니다. 이 설정은 해당 요청에 쿼리 매개변수를 추가할 때 사용할 수 있습니다.
+
+## Modern.js v2
+
+더 나은 성능과 더 풍부한 기능을 제공하는 Modern.js v3 사용을 권장합니다. 다만 Modern.js v2 프로젝트에서 Module Federation을 사용할 수 있도록 [@module-federation/modern-js](https://www.npmjs.com/package/@module-federation/modern-js) 플러그인도 제공합니다.

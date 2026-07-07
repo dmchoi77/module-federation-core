@@ -1,0 +1,283 @@
+# Metro
+
+Metro Module Federation은 React Native 모바일 개발에 분산 아키텍처의 장점을 가져옵니다.
+
+## 개요
+
+React Native용 Module Federation 구현은 커스텀 Metro 번들러 통합을 사용하며, 이를 통해 다음이 가능합니다.
+
+- React Native 앱을 위한 **마이크로 프론트엔드 아키텍처**
+- 여러 React Native 애플리케이션 간 **Code sharing**
+- 애플리케이션 모듈의 **Independent deployment**
+- 동적 업데이트를 위한 **Runtime module loading**
+
+> **참고**: Metro 번들러의 Module Federation 지원은 아직 실험적 단계입니다. 일부 기능이나 통합이 부족할 수 있으며, 커스텀 Metro 설정에 의존하는 프로젝트나 라이브러리는 아직 지원되지 않아 동작하지 않을 수 있습니다.
+
+## 패키지
+
+React Native Module Federation 생태계는 다음 패키지들로 구성됩니다.
+
+- `@module-federation/metro`: Module Federation을 활성화하는 Metro 핵심 통합
+- `@module-federation/metro-plugin-rnc-cli`: React Native CLI 통합
+- `@module-federation/metro-plugin-rock`: [Rock](https://www.rockjs.dev/) 통합
+- `@module-federation/metro-plugin-rnef`: RNEF 통합(사용 중단됨, 대신 `metro-plugin-rock` 사용)
+
+## 설치
+
+사용하는 패키지 매니저로 React Native 프로젝트에 필요한 패키지를 설치합니다.
+
+```shell
+# 핵심 패키지(필수)
+pnpm add @module-federation/metro
+
+# 프로젝트에서 React Native CLI를 사용하는 경우
+pnpm add @module-federation/metro-plugin-rnc-cli
+
+# 프로젝트에서 Rock(이전 RNEF)을 사용하는 경우
+pnpm add @module-federation/metro-plugin-rock
+```
+
+## 설정
+
+Module Federation을 활성화하려면 Metro 설정을 `withModuleFederation` 함수로 감싸세요. host application과 mini application을 포함해 모든 federated modules의 Metro 설정에 이 함수를 적용해야 합니다.
+
+```javascript
+const { withModuleFederation } = require('@module-federation/metro');
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+
+const config = {};
+
+module.exports = withModuleFederation(
+  mergeConfig(getDefaultConfig(__dirname), config),
+  {
+    // Module Federation 설정은 다음 문서와 같은 형식을 따릅니다.
+    // https://module-federation.io/configure/index.html
+    // 참고: React Native 환경에서는 일부 기능을 사용할 수 없을 수 있습니다.
+    name: 'YourAppName',
+    remotes: {
+      // remote applications를 정의합니다(host apps용).
+      // remoteName: 'remoteName@http://localhost:8082/mf-manifest.json',
+    },
+    exposes: {
+      // modules를 expose합니다(remote apps용).
+      // './Component': './src/Component.tsx',
+    },
+    shared: {
+      // Host applications는 모든 shared dependencies에 eager: true를 설정해야 합니다.
+      react: {
+        singleton: true,
+        eager: true,
+        requiredVersion: '19.1.0',
+        version: '19.1.0',
+      },
+      'react-native': {
+        singleton: true,
+        eager: true,
+        requiredVersion: '0.80.0',
+        version: '0.80.0',
+      },
+    },
+  },
+  {
+    // 오래된 패키지를 패치하려면 이 실험적 플래그를 활성화해야 합니다.
+    // 프로젝트가 지원되는 React Native와 Metro 버전을 사용한다면 생략할 수 있습니다.
+    flags: {
+      // React Native의 HMR Client 패치를 활성화합니다.
+      unstable_patchHMRClient: true,
+      // React Native CLI 패치를 활성화합니다.
+      unstable_patchInitializeCore: true,
+      // Metro의 runtime require 패치를 활성화합니다.
+      unstable_patchRuntimeRequire: true,
+    },
+  }
+);
+```
+
+### App Async Boundary 설정
+
+Module Federation 런타임을 활성화하려면 메인 App 컴포넌트를 `withAsyncStartup`으로 감쌉니다. 이렇게 하면 앱 컴포넌트가 렌더링되기 전에 Module Federation 런타임이 올바르게 초기화되도록 async boundary가 생성됩니다.
+
+```javascript
+import { withAsyncStartup } from '@module-federation/runtime';
+import { AppRegistry } from 'react-native';
+
+// withAsyncStartup helper로 async boundary 생성
+// App 컴포넌트를 반환하는 함수 전달
+// 필요하면 fallback component를 반환하는 함수도 전달
+const WrappedApp = withAsyncStartup(
+  () => require('./App'),
+  () => require('./Fallback') // 선택 사항인 fallback component
+);
+
+AppRegistry.registerComponent('YourAppName', WrappedApp);
+```
+
+`withAsyncStartup` 함수는 다음을 수행합니다.
+
+- 앱을 렌더링하기 전에 Module Federation 런타임 초기화를 기다립니다.
+- React Suspense로 async loading을 처리합니다.
+- 초기화 중 표시할 fallback component를 선택적으로 받을 수 있습니다.
+
+## 사용 패턴
+
+### Host Application
+
+Host application은 다른 애플리케이션의 remote modules를 사용합니다.
+
+```javascript
+// metro.config.js for host app
+module.exports = withModuleFederation(
+  mergeConfig(getDefaultConfig(__dirname), config),
+  {
+    name: 'HostApp',
+    remotes: {
+      'mini-app': 'miniApp@http://localhost:8082/mf-manifest.json',
+      'another-app': 'anotherApp@http://192.168.1.100:8083/mf-manifest.json',
+    },
+    shared: {
+      react: { singleton: true, eager: true },
+      'react-native': { singleton: true, eager: true },
+    },
+  }
+);
+```
+
+### Remote Application (Mini App)
+
+Remote application은 host applications가 사용할 수 있는 modules를 expose합니다.
+
+```javascript
+// remote 앱의 metro.config.js
+module.exports = withModuleFederation(
+  mergeConfig(getDefaultConfig(__dirname), config),
+  {
+    name: 'MiniApp',
+    // 선택 사항: TS 프로젝트에서 페더레이션 타입 생성을 활성화합니다.
+    // `bundle-mf-remote` 실행 중 `@mf-types.zip`을 생성하고,
+    // 활성화된 경우 `@mf-types.d.ts`도 생성합니다.
+    // 생성된 파일 이름은 `mf-manifest.json`의 `metaData.types`에 기록됩니다.
+    dts: true,
+    exposes: {
+      './Screen': './src/Screen.tsx',
+      './Component': './src/Component.tsx',
+    },
+    shared: {
+      react: { singleton: true, eager: true },
+      'react-native': { singleton: true, eager: true },
+    },
+  }
+);
+```
+
+## CLI 명령
+
+React Native CLI 통합은 페더레이션 애플리케이션을 번들링하기 위한 추가 명령을 제공합니다.
+
+### Bundle Module Federation Host
+
+remote modules를 사용하는 host application을 번들링합니다.
+
+```shell
+# iOS용 번들
+react-native bundle-mf-host --entry-file index.js --platform ios
+
+# Android용 번들
+react-native bundle-mf-host --entry-file index.js --platform android
+```
+
+### Module Federation remote 번들링
+
+모듈을 노출하는 remote 애플리케이션(미니 앱)을 번들링합니다.
+
+```shell
+# iOS용 번들
+react-native bundle-mf-remote --platform ios
+
+# Android용 번들
+react-native bundle-mf-remote --platform android
+```
+
+두 명령은 표준 `react-native bundle` 명령과 같은 옵션을 지원합니다.
+
+> **참고**: 이 명령들은 `@module-federation/metro-plugin-rnc-cli` 패키지가 제공합니다.
+
+## Rock 통합
+
+[Rock](https://www.rockjs.dev/)(이전 RNEF)을 사용하는 프로젝트에서는 `rock.config.mjs`에 Module Federation 플러그인을 추가합니다.
+
+```javascript
+import { pluginMetroModuleFederation } from '@module-federation/metro-plugin-rock';
+import { platformAndroid } from '@rock-js/platform-android';
+import { platformIOS } from '@rock-js/platform-ios';
+import { pluginMetro } from '@rock-js/plugin-metro';
+
+/** @type {import('rock').Config} */
+export default {
+  bundler: pluginMetro(),
+  platforms: {
+    ios: platformIOS(),
+    android: platformAndroid(),
+  },
+  plugins: [pluginMetroModuleFederation()],
+};
+```
+
+> **참고**: RNEF에서 마이그레이션한다면 `@module-federation/metro-plugin-rnef`를 `@module-federation/metro-plugin-rock`으로 교체하고, `rnef.config.mjs`를 `rock.config.mjs`로 이름을 바꾸세요. 자세한 마이그레이션 내용은 [metro-plugin-rock README](https://www.npmjs.com/package/@module-federation/metro-plugin-rock)를 참고하세요.
+
+## API 레퍼런스
+
+### `withModuleFederation(metroConfig, federationConfig, options?)`
+
+Module Federation을 활성화하도록 Metro 설정을 감쌉니다.
+
+#### 매개변수
+
+- `metroConfig` (MetroConfig) - 기존 Metro 설정
+- `federationConfig` (FederationConfig) - Module Federation 설정
+- `options` (Options) - 실험적 기능을 위한 선택 설정
+
+#### FederationConfig 인터페이스
+
+```typescript
+export interface ModuleFederationConfig {
+  name: string;
+  filename?: string;
+  remotes?: Record<string, string>;
+  exposes?: Record<string, string>;
+  shared?: Shared;
+  shareStrategy?: 'loaded-first' | 'version-first';
+  runtimePlugins?: string[];
+  /**
+   * @deprecated runtimePlugins를 대신 사용하세요.
+   * 다음 메이저 버전에서 제거될 예정입니다.
+   */
+  plugins?: string[];
+  dts?: boolean | PluginDtsOptions;
+}
+```
+
+#### SharedConfig 인터페이스
+
+```typescript
+export interface SharedConfig {
+  singleton: boolean;
+  eager: boolean;
+  version: string;
+  requiredVersion: string;
+  import?: false;
+}
+```
+
+#### 지원하지 않는 옵션 경고
+
+Metro는 현재 공유 Module Federation 설정 옵션 중 일부만 지원합니다.
+지원하지 않는 옵션을 제공하면 Metro는 검증 중 해당 옵션이 **지원되지 않으며 효과가 없다**는 경고를 출력합니다.
+
+런타임 플러그인 경로에는 `runtimePlugins`를 사용하세요.
+`plugins`는 사용 중단되었으며 다음 메이저 버전에서 제거될 예정입니다.
+
+## 예제와 모범 사례
+
+이 설정은 표준 [Module Federation 설정 형식](https://module-federation.io/configure/)을 따릅니다. Module Federation 개념, 설정 옵션, 사용 패턴에 대한 자세한 내용은 공식 [Module Federation 문서](https://module-federation.io/)를 참고하세요.
+
+실행 가능한 예제와 자세한 구현 가이드는 [Module Federation Metro 저장소](https://github.com/module-federation/metro)에서 확인할 수 있습니다. 다양한 사용 패턴과 통합 방식을 보여 주는 여러 예제 애플리케이션이 포함되어 있습니다.

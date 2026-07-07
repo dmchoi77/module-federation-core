@@ -1,0 +1,38 @@
+# 설정 개요
+
+이 페이지는 `Module Federation`에서 사용할 수 있는 모든 설정 옵션을 정리합니다. 프로젝트 유형별 패키지 설치와 플러그인 설정은 [통합 문서](/integrations/index.html)를 참고하세요.
+
+```ts
+type ModuleFederationOptions = {
+  // Module Federation 이름
+  name: string;
+  // 현재 앱에서 사용할 share scope (기본값: 'default')
+  shareScope?: string | string[];
+  // remoteEntry 파일 이름
+  filename?: string;
+  // remote 모듈과 entry 정보 설정
+  remotes?: Array<RemoteInfo>;
+  // 외부에 노출할 모듈 정보
+  exposes?: PluginExposesOptions;
+  // shared dependencies 설정
+  shared?: ShareInfos;
+  // 동적 publicPath
+  getPublicPath?: string;
+  // 런타임 플러그인
+  runtimePlugins?: Array<string | [string, Record<string, unknown>]>;
+  // 사용할 런타임 구현체
+  implementation?: string;
+  // manifest 설정
+  manifest?: boolean | PluginManifestOptions;
+  // 페이지 live reload와 타입 hot reload 제어
+  dev?: boolean | PluginDevOptions;
+  // 타입 생성/소비 제어
+  dts?: boolean | PluginDtsOptions;
+  // 디스크에 임시 파일을 쓰지 않고 가상 런타임 엔트리포인트 사용
+  virtualRuntimeEntry?: boolean;
+  injectTreeShakingUsedExports?: boolean;
+  treeShakingDir?: string;
+  treeShakingSharedPlugins?: Array<string>;
+  treeShakingSharedExcludePlugins?: Array<string>;
+};
+```

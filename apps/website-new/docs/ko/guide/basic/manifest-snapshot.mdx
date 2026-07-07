@@ -1,0 +1,116 @@
+# Manifest와 Snapshot
+
+`mf-manifest.json`은 producer가 빌드 후 생성하는 런타임 manifest입니다. producer가 어떤 모듈을 노출하는지, remote entry가 어디에 있는지, 해당 모듈에 필요한 asset은 무엇인지, 어떤 shared dependencies를 제공하는지, 타입 파일은 어디에 있는지를 설명합니다.
+
+Snapshot은 Manifest 정보를 런타임이 바로 쓰기 좋은 형태로 압축하고 미리 해석해 둔 결과입니다. 런타임이 Manifest를 요청한 뒤 필요할 때 Snapshot을 만들 수도 있고, 배포 서비스가 있다면 미리 Snapshot을 만들어 consumer에 전달할 수도 있습니다. 이렇게 하면 consumer는 remote entry와 preload할 asset 정보를 바로 얻을 수 있습니다.
+
+이 문서는 Manifest와 Snapshot의 개념과 사용 위치를 설명합니다. 설정 방법은 [manifest 설정](/configure/manifest.html)을, 전체 필드 목록은 [mf-manifest.json 필드](/guide/advanced/manifest-fields.html)을 참고하세요.
+
+## Manifest가 필요한 이유
+
+`remoteEntry.js`만으로도 consumer는 remote 모듈을 불러올 수 있습니다. 하지만 로딩 전에 해당 모듈이 어떤 asset, 타입, shared dependencies를 필요로 하는지 알기 어렵습니다.
+
+`mf-manifest.json`을 사용하면 consumer가 remote 모듈을 불러오기 전에 다음 정보를 확인할 수 있습니다.
+
+- Remote entry URL과 로딩 타입
+- 노출된 모듈과 asset 목록
+- 미리 로드할 수 있는 JavaScript와 CSS
+- shared dependencies 이름, 버전, asset
+- 타입 파일 URL
+
+따라서 Manifest는 단순한 entry URL이 아닙니다. producer가 consumer에게 전달하는 런타임 지시서에 가깝습니다.
+
+## Manifest와 Stats
+
+[manifest 설정](/configure/manifest.html)을 활성화하면 빌드 플러그인이 `mf-manifest.json`과 `mf-stats.json`을 함께 생성합니다.
+
+| 파일 | 용도 |
+| --- | --- |
+| `mf-manifest.json` | consumer 런타임이 읽습니다. 필드가 더 안정적이고 간결합니다. |
+| `mf-stats.json` | 빌드 분석, 진단, 도구에서 사용합니다. 필드가 더 상세합니다. |
+
+remote 모듈을 소비하기만 한다면 보통 `mf-manifest.json`만 있으면 충분합니다. 분석 도구, 진단 도구, 플랫폼 연동을 만든다면 `mf-stats.json`도 함께 확인하세요.
+
+## Snapshot이란?
+
+Snapshot은 런타임이 실제로 소비하는 모듈 정보라고 이해하면 됩니다.
+
+Manifest는 하나의 producer가 만든 빌드 산출물이며 source manifest에 가깝습니다. Snapshot은 그 정보를 런타임이 사용하기 쉬운 구조로 다시 정리합니다. 예를 들면 다음 정보가 들어갑니다.
+
+- producer의 최종 `remoteEntry`
+- 노출된 모듈의 asset
+- preload 가능한 asset
+- shared dependencies 정보
+- producer가 의존하는 다른 remote 모듈
+
+배포 서비스가 없다면 consumer가 먼저 `mf-manifest.json`을 요청하고, 런타임이 이를 바탕으로 Snapshot을 생성합니다.
+
+```txt
+Host가 remotes 설정
+  -> mf-manifest.json 요청
+  -> Manifest parse
+  -> Snapshot 생성
+  -> remoteEntry, expose, shared, preload asset 로드
+```
+
+배포 서비스가 있다면 서비스가 Manifest를 미리 읽고 Snapshot을 생성한 뒤 consumer에 전달할 수 있습니다.
+
+```txt
+Producer가 Manifest 빌드
+  -> 배포 서비스가 Manifest를 미리 parse
+  -> Snapshot 생성
+  -> Host가 remoteEntry와 preload asset을 직접 획득
+```
+
+이 방식은 런타임에서 Manifest 요청을 한 번 줄이고, asset 해석 작업을 서버 쪽으로 옮길 수 있습니다.
+
+## 어디에 사용되나요?
+
+### Remote 로딩
+
+`remotes`가 `mf-manifest.json`을 가리키면 런타임은 Manifest를 읽고 Snapshot을 만든 뒤, Snapshot에서 최종 `remoteEntry` URL을 찾습니다. 자세한 설정은 [remotes](/configure/remotes.html)를 참고하세요.
+
+### 애셋 프리로딩
+
+Manifest에는 exposes와 shared dependencies의 애셋 정보가 들어 있습니다. Snapshot이 만들어지면 런타임은 이 정보를 사용해 remote 모듈에 필요한 JavaScript와 CSS를 미리 로드할 수 있습니다.
+
+### Chrome DevTools
+
+[Chrome DevTools](/guide/debug/chrome-devtool.html)는 Manifest / Snapshot을 사용해 현재 페이지에 어떤 federated 모듈이 있는지, 모듈이 서로 어떻게 의존하는지, shared dependencies가 어떻게 재사용되는지, 프록시에 어떤 remote entry가 필요한지 파악합니다.
+
+### 로컬 프록시
+
+프로덕션 페이지를 디버깅할 때 프록시 도구는 Snapshot을 사용해 대상 producer를 찾고, 이를 로컬에서 실행 중인 Manifest 또는 remote entry로 바꿀 수 있습니다.
+
+### 런타임 진단
+
+remote 로딩이 실패했을 때 Manifest / Snapshot은 실패 지점을 좁히는 데 도움이 됩니다.
+
+- Manifest URL에 접근할 수 있는지
+- Manifest 필드가 완전한지
+- 대상 producer가 Snapshot 안에 있는지
+- Snapshot이 `remoteEntry`를 찾을 수 있는지
+- `remoteEntry`가 정상적으로 로드되는지
+- expose가 존재하는지
+
+이를 통해 Manifest 요청 실패, Snapshot 누락, remote entry 로딩 실패를 구분할 수 있습니다.
+
+## 무엇을 만들 수 있나요?
+
+Manifest / Snapshot은 런타임 플러그인, 디버깅 도구, 배포 플랫폼의 입력 데이터로 사용하기 좋습니다.
+
+예를 들어 다음을 만들 수 있습니다.
+
+- **프리로드 최적화**: remote 모듈에 필요한 JS와 CSS를 더 일찍 가져와 사용자 상호작용 이후의 대기 시간을 줄입니다.
+- **모듈 그래프 시각화**: 현재 페이지에 로드된 producer, consumer, shared dependencies 관계를 보여 줍니다.
+- **로컬 프록시 디버깅**: 프로덕션 페이지의 producer를 로컬에서 실행 중인 producer로 교체합니다.
+- **로딩 진단**: 실패가 Manifest, Snapshot, remoteEntry, expose 중 어느 단계에서 발생했는지 알려 줍니다.
+- **shared dependencies 분석**: shared dependencies가 재사용되는지, 중복되는지, 기대한 버전과 매칭되는지 확인합니다.
+
+비즈니스 코드는 global Snapshot을 직접 수정하지 않는 것이 좋습니다. 이 정보는 런타임 플러그인, DevTools, 배포 서비스를 통해 소비하세요.
+
+## disableSnapshot의 영향
+
+[disableSnapshot](/configure/experiments.html#disablesnapshot)을 활성화하면 런타임 크기를 줄이기 위해 Snapshot과 preload 관련 런타임 기능이 제거됩니다.
+
+이 설정은 remote 타입 힌트, 프리로딩, DevTools 시각화, 프록시처럼 Manifest / Snapshot에 의존하는 기능에 영향을 줍니다.

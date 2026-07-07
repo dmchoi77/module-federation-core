@@ -1,0 +1,59 @@
+# remoteType
+
+`remoteType`은 remote container의 external 모듈 타입을 지정하며, 런타임이 remote entry를 어떤 방식으로 로드할지 결정합니다.
+
+- 타입: `ExternalsType`
+- 필수: 아니요
+- 기본값: `'script'`
+
+```ts
+type ExternalsType =
+  | 'var' | 'module' | 'assign'
+  | 'this' | 'window' | 'self' | 'global'
+  | 'commonjs' | 'commonjs2' | 'commonjs-module' | 'commonjs-static'
+  | 'amd' | 'amd-require'
+  | 'umd' | 'umd2'
+  | 'jsonp' | 'system'
+  | 'promise' | 'import' | 'module-import'
+  | 'script' | 'node-commonjs';
+```
+
+## 사용법
+
+`remoteType`은 Webpack/Rspack이 런타임에서 remote container script를 로드하는 방식을 제어합니다. 자주 쓰는 값은 다음과 같습니다.
+
+| 값 | 설명 |
+|---|---|
+| `'script'` | `<script>` 태그로 로드합니다. 브라우저 기본값입니다. |
+| `'var'` | Remote container를 전역 변수로 노출합니다. |
+| `'commonjs2'` | `require()`로 로드합니다. Node.js에서 사용합니다. |
+| `'node-commonjs'` | Node.js CommonJS 형식입니다. |
+| `'import'` | 동적 `import()`로 로드합니다. |
+| `'promise'` | Promise wrapper로 로드합니다. |
+| `'module'` | ESM 모듈로 로드합니다. |
+
+:::tip
+대부분의 경우 `remoteType`을 직접 설정할 필요는 없습니다. 브라우저 환경에서는 기본값인 `'script'`가 동작합니다. Node.js 서버 사이드 시나리오에서는 보통 `'commonjs2'` 또는 `'node-commonjs'`가 필요합니다.
+:::
+
+## 예제
+
+```ts
+// 브라우저(기본값)
+new ModuleFederationPlugin({
+  name: '@demo/host',
+  remoteType: 'script',
+  remotes: {
+    provider: 'provider@http://localhost:3001/remoteEntry.js',
+  },
+});
+
+// Node.js 서버 사이드
+new ModuleFederationPlugin({
+  name: '@demo/node-host',
+  remoteType: 'commonjs2',
+  remotes: {
+    provider: 'provider@http://localhost:3001/remoteEntry.js',
+  },
+});
+```

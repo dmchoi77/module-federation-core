@@ -1,0 +1,89 @@
+import ErrorCodeTitle from '@components/ErrorCodeTitle';
+
+# 타입
+
+타입 에러는 크게 두 종류로 나눌 수 있습니다. 고정 에러 코드가 있는 에러와, 사용 시나리오에 따라 달라지는 에러입니다.
+
+## 고정 에러 코드
+
+이 유형의 에러는 코드에서 명확히 감지할 수 있으며, 각 에러에 고정된 에러 코드가 부여됩니다. 에러 코드는 `TYPE-001`처럼 에러 유형과 ID로 구성됩니다.
+
+### 에러 코드 목록
+
+- [TYPE-001](#type-001)
+
+## TYPE-001
+
+<ErrorCodeTitle code='TYPE-001'/>
+
+### 원인
+
+노출된(`exposes`) 파일의 TS 타입을 컴파일할 때 현재 프로젝트의 `tsconfig.json`을 사용합니다. 필요한 compiler option이 빠져 있으면 타입 빌드가 실패할 수 있습니다.
+
+### 해결 방법
+
+1. 에러 메시지의 `cmd` 명령에서 `tsconfig.json`의 `incremental`과 `tsBuildInfoFile`을 제거합니다.
+2. 에러 메시지에 표시된 `cmd`를 터미널에서 실행하고, 출력 내용을 기준으로 파일 또는 `tsconfig`를 수정합니다.
+
+TS 타입 checking 에러를 무시하려면 `tsconfig.json`에서 [`compilerOptions.noCheck`](https://www.typescriptlang.org/tsconfig/#noCheck)를 `true`로 설정합니다. 이 옵션은 TS 5.5 이상이 필요합니다.
+
+`cmd`는 에러 없이 실행되지만 TS compile failure가 계속 발생한다면 `ModuleFederationPlugin`의 `exposes` 필드를 확인하세요.
+
+```ts title="[modern|rspack|rsbuild|webpack].config.[js,ts]"
+new ModuleFederationPlugin({
+    ...
+    // key와 value가 모두 "./"로 시작하는지 확인
+    exposes: { './Foo': './src/<path-to-file>/Foo.tsx' },
+    ...
+  })
+```
+
+## 시나리오별 에러
+
+이 유형의 에러는 사용자의 구체적인 시나리오에 따라 발생하며 고정된 에러 코드가 없습니다. 에러 메시지와 처리 방법은 상황에 따라 달라집니다.
+
+### 생성된 타입에 alias가 포함된 경우
+
+**현상 설명**
+
+producer가 생성한 타입에 alias가 포함되어 consumer에서 정상적으로 처리되지 않습니다.
+
+**해결 방법**
+
+1. [typescript-transform-paths](https://www.npmjs.com/package/typescript-transform-paths)와 [ts-patch](https://www.npmjs.com/package/ts-patch)를 설치합니다.
+2. `tsconfig.json`에 `typescript-transform-paths`를 적용합니다.
+
+```diff
+{
+"compilerOptions": {
++ "plugins": [
++ { "transform": "typescript-transform-paths" },
++ {
++ "transform": "typescript-transform-paths",
++ "afterDeclarations": true
++ }
++ ],
+},
+}
+```
+
+3. [dts.generateTypes.compilerInstance](/configure/dts.html#compilerinstance)를 `tspc`(`ts-patch` CLI)로 설정합니다.
+4. 타입을 다시 생성합니다.
+
+### 로컬 프록시 뒤에서 작업할 때 생성된 타입이 업데이트되지 않는 경우
+
+**현상 설명**
+
+producer가 타입을 성공적으로 생성했고 consumer 로그에도 타입이 정상 처리됐다고 나오지만, `@mf-types` 디렉터리가 업데이트되지 않습니다.
+프록시 설정 때문에 리소스를 다운로드하지 못하는 문제일 수 있습니다.
+
+**해결 방법**
+
+1. producer의 `dist` 디렉터리에 `@mf-types` 디렉터리가 생성되었는지 확인합니다.
+2. 프록시 로그에서 `TLS` 또는 `SSL` 관련 오류가 있는지 확인합니다.
+3. 로컬 환경에 맞는 `TLS` 인증서를 추가하도록 프록시 설정을 조정합니다.
+4. 그래도 동작하지 않는 시나리오가 있습니다. 이때는 대안으로 환경 변수 `NODE_TLS_REJECT_UNAUTHORIZED=0`을 정의해 `TLS` 또는 `SSL` 오류를 무시할 수 있습니다. 그러면 `@mf-types.zip`을 정상 처리할 수 있습니다.
+
+:::danger 중요
+`NODE_TLS_REJECT_UNAUTHORIZED=0`은 로컬 개발 환경에서만 설정하세요. 프로덕션 용도가 아닙니다. 이 방법을 사용한다면 생성된 타입 파일을 저장소에 커밋하는 것을 권장합니다.
+:::

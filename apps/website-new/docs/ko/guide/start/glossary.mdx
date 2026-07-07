@@ -1,0 +1,46 @@
+# 용어 정리
+
+## Module Federation
+
+Module Federation(MF)은 JavaScript 애플리케이션을 여러 독립 단위로 나누고, 각 애플리케이션 사이에서 코드와 리소스를 공유할 수 있게 해주는 아키텍처 패턴입니다. 백엔드의 마이크로서비스와 비슷하게, 프론트엔드 애플리케이션도 여러 마이크로 프론트엔드로 나누어 구성할 수 있습니다.
+
+federated 모듈을 사용하는 애플리케이션에 필요한 의존성이 없다면, 해당 의존성은 빌드 산출물이나 공유 가능한 다른 애플리케이션에서 가져올 수 있습니다.
+
+이 구조를 사용하면 전체 애플리케이션을 다시 빌드하지 않고도 여러 시스템이 코드를 공유하고 독립적으로 업데이트할 수 있습니다. Federation은 브라우저뿐 아니라 서버 환경에서도 동작하므로, 동적인 백엔드 통합 시나리오에도 활용할 수 있습니다.
+
+## Producer (Remote)
+
+`exposes` 설정을 통해 다른 JavaScript 애플리케이션이 사용할 수 있는 모듈을 노출하는 애플리케이션을 Producer 또는 Remote라고 부릅니다. Producer도 동시에 Consumer 역할을 할 수 있습니다.
+
+## Consumer (Host)
+
+`remotes` 설정을 통해 다른 Producer가 노출한 모듈을 사용하는 애플리케이션을 Consumer 또는 Host라고 부릅니다. Consumer도 동시에 Producer 역할을 할 수 있습니다.
+
+## 마이크로 프론트엔드
+
+마이크로 프론트엔드(MFE)는 하나의 제품을 여러 독립적인 프론트엔드 애플리케이션으로 구성하는 아키텍처 스타일입니다. 사용자는 하나의 제품처럼 경험하지만, 내부적으로는 각 애플리케이션을 독립적으로 개발, 테스트, 배포할 수 있습니다.
+
+주로 다음 문제를 해결하기 위해 사용합니다.
+
+- 시간이 지나며 애플리케이션 규모가 커지고 유지보수가 어려워지는 문제
+- 여러 팀이나 부서가 하나의 프로젝트를 함께 개발할 때 발생하는 협업 비효율
+
+## 번들러
+
+번들러는 [Webpack](https://webpack.js.org/), [Rspack](https://rspack.dev/), Vite, Metro 같은 모듈 번들링 도구를 말합니다.
+
+번들러의 주요 역할은 JavaScript, CSS, 기타 파일을 묶어 브라우저, Node.js 등 다양한 환경에서 사용할 수 있는 산출물로 만드는 것입니다. 웹 애플리케이션을 처리할 때 번들러는 애플리케이션에 필요한 모든 모듈을 포함하는 의존성 그래프를 만들고, 이를 하나 이상의 번들로 패키징합니다.
+
+프로젝트에 맞는 도구와 플러그인을 선택하려면 [통합 문서](/integrations/index.html)를 참고하세요.
+
+## Manifest
+
+Manifest는 Producer가 빌드 중 생성하는 런타임 manifest입니다. remote entry, 노출된 모듈, asset, shared dependencies, 타입 정보를 담고 있습니다. Consumer는 `mf-manifest.json`을 읽어 remote 모듈을 로드하는 데 필요한 정보를 얻습니다.
+
+자세한 내용은 [Manifest and Snapshot](/guide/basic/manifest-snapshot.html), [manifest 설정](/configure/manifest.html), [mf-manifest.json 필드](/guide/advanced/manifest-fields.html)를 참고하세요.
+
+## Snapshot
+
+Snapshot은 Manifest 정보를 압축하고 미리 해석한 결과입니다. 런타임은 Manifest에서 Snapshot을 생성할 수 있습니다. 배포 서비스가 있다면 Snapshot을 미리 생성해 전달함으로써 consumer가 remote entry와 사전 로드 가능한 asset 정보를 바로 사용할 수 있습니다.
+
+Snapshot은 remote 로딩, asset 사전 로딩, DevTools, proxying, 런타임 진단 등에 사용됩니다.

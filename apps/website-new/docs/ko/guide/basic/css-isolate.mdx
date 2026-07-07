@@ -1,0 +1,170 @@
+# 스타일 격리
+
+Module Federation에서는 host와 remote 애플리케이션이 같은 페이지에서 실행되고 하나의 전역 CSS 범위를 공유합니다. 그래서 한쪽의 스타일이 다른 쪽으로 쉽게 새어 나가 의도치 않은 "스타일 오염"을 만들 수 있습니다. Module Federation은 내장 스타일 격리를 제공하지 않으므로(이유는 아래 [FAQ](#module-federation이-css-스타일-격리를-직접-처리하지-않는-이유는-무엇인가요)를 참고), 각 producer는 자신의 시나리오에 맞는 전략을 선택해야 합니다.
+
+## BEM (Block Element Modifier)
+
+BEM은 클래스 이름에 접두사와 접미사를 붙여 스타일 격리를 구현하는 명명 규칙입니다. 구조는 다음과 같습니다.
+
+- **Block**: `.button`처럼 독립적인 기능 블록을 나타냅니다.
+- **Element**: `.button__text`처럼 block의 일부를 나타냅니다.
+- **Modifier**: `.button--primary`처럼 block 또는 element의 다른 상태나 버전을 나타냅니다.
+
+```html
+<div class="button">
+  <span class="button__text">Button</span>
+</div>
+```
+
+```css
+.button {
+  background-color: blue;
+  color: white;
+}
+
+.button__text {
+  font-size: 16px;
+}
+
+.button--primary {
+  background-color: green;
+}
+```
+
+## CSS 모듈
+
+CSS 모듈은 각 CSS 파일을 모듈로 다루고, 컴파일 중 각 클래스 이름을 고유 식별자로 변환해 스타일 격리를 구현합니다. [Rsbuild에서 CSS Modules 사용하기](https://v2.rsbuild.rs/guide/styling/css-modules)
+
+
+1. `styles.module.css`라는 CSS 파일을 만듭니다.
+
+```css
+/* styles.module.css */
+.button {
+  background-color: blue;
+  color: white;
+}
+```
+
+2. React 컴포넌트에서 가져와 사용합니다.
+
+```javascript
+import React from 'react';
+import styles from './styles.module.css';
+
+function App() {
+  return <button className={styles.button}>Button</button>;
+}
+
+export default App;
+```
+
+## CSS-in-JS
+
+CSS-in-JS는 스타일을 JavaScript 파일 안에 직접 작성하는 방식입니다. 대표 라이브러리로 [styled-components](https://styled-components.com/)와 [emotion](https://github.com/emotion-js/emotion)이 있습니다. [Rsbuild에서 CSS-in-JS 사용하기](https://rsbuild.rs/guide/styling/css-in-js)
+
+
+1. styled-components를 설치합니다.
+
+```bash
+npm install styled-components
+```
+
+2. React 컴포넌트에서 사용합니다.
+
+```javascript
+import React from 'react';
+import styled from 'styled-components';
+
+const Button = styled.button`
+  background: blue;
+  color: white;
+`;
+
+function App() {
+  return <Button>Button</Button>;
+}
+
+export default App;
+```
+
+## Shadow DOM
+
+Shadow DOM은 Web Component 기술의 일부로, 격리된 DOM 트리를 만들어 스타일 격리를 구현합니다. React에서는 [react-shadow](https://www.npmjs.com/package/react-shadow)를 통해 Shadow DOM을 사용할 수 있습니다.
+
+
+1. HTML 템플릿을 만듭니다.
+
+```html
+<template id="my-component">
+  <style>
+    .button {
+      background: blue;
+      color: white;
+    }
+  </style>
+  <button class="button">Button</button>
+</template>
+```
+
+2. 커스텀 엘리먼트를 정의하고 Shadow DOM을 연결합니다.
+
+```javascript
+class MyComponent extends HTMLElement {
+  constructor() {
+    super();
+    const shadow = this.attachShadow({ mode: 'open' });
+    const template = document.getElementById('my-component').content;
+    shadow.appendChild(template.cloneNode(true));
+  }
+}
+
+customElements.define('my-component', MyComponent);
+```
+
+3. HTML에서 커스텀 엘리먼트를 사용합니다.
+
+```html
+<my-component></my-component>
+```
+
+## Vue Scoped Styles
+
+Vue에서는 `scoped` 속성으로 컴포넌트 수준의 스타일 격리를 구현할 수 있습니다.
+
+
+1. Vue 컴포넌트 안에 스타일을 정의합니다.
+
+```vue
+<template>
+  <button class="button">Button</button>
+</template>
+
+<style scoped>
+.button {
+  background: blue;
+  color: white;
+}
+</style>
+```
+
+각 방식에는 적합한 시나리오와 한계가 있습니다. 프로젝트 요구사항에 맞는 스타일 격리 방식을 선택하세요.
+
+## FAQ
+
+### Module Federation이 CSS 스타일 격리를 직접 처리하지 않는 이유는 무엇인가요?
+
+Module Federation에 CSS 격리를 직접 포함하지 않는 주요 이유는 다음과 같습니다.
+
+* CSS 격리는 shared dependencies와 크게 충돌할 수 있습니다. shared dependencies는 공통 의존성을 최대한 재사용하는 것을 목표로 하는데, 이 과정에서 일부 shared dependencies가 샌드박스를 벗어나 격리를 제어하기 어려워지고 로딩 순서의 영향을 받을 수 있습니다.
+
+* 런타임에서 CSS 격리를 처리하면 엣지 케이스가 많고 문제 해결이 매우 어려워져 서비스 안정성이 떨어질 수 있습니다. 흔한 문제는 다음과 같습니다.
+  * Shadow DOM: 다양한 컴포넌트 라이브러리와 호환성 문제가 생길 수 있고, 공개 이슈를 추적하고 해결하는 과정이 길고 복잡할 수 있습니다.
+  * CSS 수집과 제거: 앞서 언급한 격리와 공유 재사용 문제 때문에 CSS가 의도치 않게 제거될 수 있습니다.
+  * consumer에서 샌드박스 업그레이드: 서비스 영향 범위를 제어하기 어렵습니다.
+
+> 권장 처리 방법:
+
+* 모듈 또는 하위 애플리케이션 producer 수준에서 CSS를 처리해 어떤 환경에서도 모듈이나 애플리케이션이 기대한 대로 실행되도록 합니다.
+* CSS 모듈, 컴포넌트 라이브러리 접두사, 통일된 컴포넌트 라이브러리 버전을 사용해 문제를 해결합니다.
+* 다른 서비스에서 사용할 수 있도록 Shadow DOM 컴포넌트를 직접 export합니다.

@@ -1,0 +1,46 @@
+# Rspack
+
+- <code>{props.brandName || props.name || 'Module Federation'}</code> 로딩 규격에 맞는 모듈을 빌드할 수 있습니다.
+- alias를 사용해 <code>{props.brandName || props.name || 'Module Federation'}</code> 규격의 모듈을 소비할 수 있습니다.
+- 모듈의 shared dependencies를 설정할 수 있습니다. 이미 host 환경에 같은 의존성이 있다면 다시 로드하지 않습니다.
+- remote 타입이 있는 모듈은 해당 remote 모듈의 타입을 자동으로 다운로드해 사용합니다.
+- remote 모듈을 소비할 때 HMR을 사용할 수 있습니다.
+
+{props.tip}
+
+## 빠른 시작
+
+### 설치
+
+다음 명령으로 플러그인을 설치합니다.
+
+import { PackageManagerTabs } from '@theme';
+
+<PackageManagerTabs
+  command={{
+    npm: `npm add ${props.rspackPackage || props.pkgName || '@module-federation/enhanced'}`,
+    yarn: `yarn add ${props.rspackPackage || props.pkgName || '@module-federation/enhanced'}`,
+    pnpm: `pnpm add ${props.rspackPackage || props.pkgName || '@module-federation/enhanced'}`,
+    bun: `bun add ${props.rspackPackage || props.pkgName || '@module-federation/enhanced'}`,
+  }}
+/>
+
+### {props.configName || 'module-federation.config.ts'} 만들기
+
+다음 내용으로 {props.configName || 'module-federation.config.ts'} 파일을 만듭니다.
+
+import CreateConfig from '@docs/_snippets/rspack/create-config';
+
+{props.createConfig || <CreateConfig />}
+
+### 플러그인 등록
+
+`Rspack`에서는 `plugins` 설정에 플러그인을 추가합니다.
+
+import RegisterPlugin from '@docs/_snippets/rspack/register-plugin';
+
+{props.registerPlugin || <RegisterPlugin />}
+
+## 설정
+
+모든 설정 항목의 자세한 설명은 [설정 개요](/configure/index.html)에서 확인할 수 있습니다.

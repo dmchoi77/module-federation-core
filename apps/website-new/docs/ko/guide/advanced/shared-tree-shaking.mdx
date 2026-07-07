@@ -1,0 +1,132 @@
+# Shared Tree Shaking
+
+{ props.name || 'Module Federation' }을 사용할 때는 중복 번들링을 줄이고 애플리케이션 간 의존성 버전을 일관되게 유지하기 위해 `shared` 설정으로 antd, React 같은 공통 의존성을 공유하는 경우가 많습니다. 하지만 기존 `shared` 메커니즘에는 단점이 있습니다. 애플리케이션이 의존성의 아주 작은 일부만 사용하더라도, 예를 들어 antd의 `Button` 컴포넌트만 사용하더라도 항상 **전체** 의존성 번들을 제공합니다.
+
+이로 인해 다음 문제가 생길 수 있습니다.
+
+- **큰 빌드 산출물**: 불필요한 코드가 번들에 포함되어 최종 출력 크기가 커집니다.
+- **런타임 오버헤드**: 브라우저가 필요한 것보다 많은 JavaScript를 다운로드하고 실행해 페이지 로드와 렌더링이 느려질 수 있습니다.
+
+**Shared Tree Shaking**은 이 문제를 해결하기 위해 설계되었습니다. 코드를 분석해 실제로 사용되는 export를 정확히 찾고, 그 부분만 번들링합니다. 결과적으로 애플리케이션은 더 작고 최적화된 shared dependencies를 소비할 수 있습니다.
+
+:::tip 주요 장점
+
+- **더 작은 출력 크기**: 불필요한 코드를 source 단계에서 줄입니다.
+- **더 빠른 로딩**: 사용자가 필요한 코드만 다운로드합니다.
+- **더 나은 런타임 성능**: 파싱하고 실행해야 할 JavaScript가 줄어듭니다.
+
+:::
+
+## 빠른 시작
+
+Shared Tree Shaking을 활성화하는 방법은 간단합니다. 설정에 `treeShaking` 옵션을 추가하세요.
+
+### 예제
+
+```ts title="rspack.config.ts"
+export default {
+  // ...
+  plugins: [
+    new ModuleFederationPlugin({
+      // ...
+      shared: {
+        antd: {
+          treeShaking: { mode: 'runtime-infer' },
+        },
+      },
+    }),
+  ],
+};
+```
+
+### 로컬 검증
+
+로컬에서 빌드한 뒤 shared dependencies(예: antd)의 출력 크기와 export된 내용을 확인하세요. 기대하는 결과는 실제로 사용하는 모듈만 포함되는 것입니다.
+
+## 설정
+
+핵심 옵션은 [sharedItem.treeShaking](/configure/shared.html#treeshaking)입니다. tree shaking 산출물이 생성되는 위치는 다음 옵션으로 제어할 수 있습니다.
+
+* [treeShakingDir](/configure/treeShakingDir.html)
+* [injectTreeShakingUsedExports](/configure/injectTreeShakingUsedExports.html)
+* [treeShakingSharedPlugins](/configure/treeShakingSharedPlugins.html)
+* [treeShakingSharedExcludePlugins](/configure/treeShakingSharedExcludePlugins.html)
+
+## 모드
+
+팀 구성과 프로젝트 규모에 맞춰 두 가지 모드를 사용할 수 있습니다.
+
+### runtime-infer
+
+`runtime-infer`는 중앙 서비스가 필요 없는 가벼운 전략입니다.
+
+- **활성화**: `mode`를 `runtime-infer`로 설정합니다.
+- **적합한 경우**:
+  - 로컬 개발과 빠른 검증
+  - 배포 또는 CI 서비스가 없는 팀
+  - consumer가 하나인 작은 프로젝트
+- **동작 방식**: 런타임에 현재 페이지가 필요로 하는 내용이 이전에 로드된 tree-shaken shared bundle로 이미 충족된다면 이를 재사용합니다. 그렇지 않으면 정확성을 보장하기 위해 **전체 의존성 번들 로딩으로 fallback**합니다.
+- **적중률 개선**: 전역 관점이 없으면 `runtime-infer`의 재사용률이 제한될 수 있습니다. 설정의 `usedExports` 목록에 필요할 수 있는 모듈을 미리 추가하면 컴파일러가 더 적합한 shared bundle을 생성하도록 유도하고 재사용률을 높일 수 있습니다.
+
+### server-calc
+
+`server-calc`는 **강력히 권장하는 모범 사례**입니다. 중앙 서비스를 활용해 tree shaking의 이점을 극대화하고 전역 최적화를 달성합니다.
+
+import CreateSharedTreeShakingDeployServer from '@docs/ko/_components/create-shared-tree-shaking-deploy-server.mdx'
+
+{!props.name && (
+  <CreateSharedTreeShakingDeployServer />
+)}
+
+## 검증과 롤백
+
+### tree shaking이 동작하는지 확인하기
+
+1.  **Network 패널 확인**: 브라우저 DevTools의 Network 패널에서 로드된 JS 파일을 필터링합니다. 원래의 전체 번들이 아니라 보조 빌드 산출물(보통 `secondary` 또는 hash 같은 식별자를 포함)을 로드했는지 확인하세요. 크기는 눈에 띄게 작아야 합니다.
+2.  **번들 내용 확인**: 로드된 shared dependency JS 파일을 내려받고, **사용하지 않은** export를 검색합니다. 예를 들어 `Button`만 사용했다면 `Modal`을 검색합니다. 없다면 성공적으로 Tree Shaking된 것입니다.
+3.  **Chrome DevTools 확인**: Chrome DevTools에서 “Shared” 패널을 열고 대상 shared dependency를 선택합니다. 상태 태그를 확인하세요. `Tree Shaking Loaded`는 Tree Shaking이 적용되어 다듬어진 산출물이 로드됐다는 뜻입니다. `Loaded`는 전체 번들 로딩으로 fallback했다는 뜻이고, `Tree Shaking Loading`은 Tree Shaking 경로로 로딩 중이라는 뜻입니다.
+
+![](https://module-federation-assest.netlify.app/document/guide/performance/shared-tree-shaking/tree-shaking-devtool.jpg)
+
+### 안전하게 롤백하기
+
+shared-dependency tree shaking은 **자동 fallback**을 전제로 설계되어 있습니다. 런타임이 Snapshot 미전달, 네트워크 오류, 버전 불일치 같은 문제를 감지하면 애플리케이션 안정성을 유지하기 위해 전체 shared dependencies 번들 로딩으로 fallback합니다.
+
+수동으로 비활성화해야 한다면 배포 서비스에서 보조 빌드와 Snapshot 업데이트 단계를 중단하세요.
+
+import SecondaryBuild from '@docs/ko/_components/secondary-build.mdx'
+import React from 'react';
+
+{props.secondaryBuild || React.createElement(SecondaryBuild)}
+
+## FAQ
+
+**1. Shared Tree Shaking을 `eager: true`와 함께 사용할 수 있나요?**
+
+**아니요.** `eager: true`는 shared dependencies를 초기 chunk에 포함합니다. 이는 tree shaking이 요구하는 온디맨드 로딩 모델과 충돌합니다. 둘 중 하나를 선택해야 합니다.
+
+- shared dependencies가 작고 가능한 가장 빠른 초기 로드가 중요하다면 `eager: true`를 고려하세요.
+- shared dependencies가 크다면, 예를 들어 컴포넌트 라이브러리라면 **`eager`를 비활성화**하고 tree shaking으로 크기와 성능 이점을 얻는 것이 좋습니다.
+
+**2. `runtime-infer`에서 singleton 의존성은 무엇을 주의해야 하나요?**
+
+주의가 필요합니다. shared dependencies가 `singleton: true`로 설정되어 전역 singleton이어야 한다면 다음 같은 상황이 생길 수 있습니다.
+
+- App A는 `antd/Button`만 사용하고 자체 tree-shaken 번들을 로드합니다.
+- App B는 `antd/Modal`을 사용하고 자체 전체 번들을 로드합니다.
+
+이 경우 같은 페이지에 서로 다른 두 antd 인스턴스가 존재할 수 있습니다. 하나는 최소 번들, 하나는 전체 번들입니다. 이는 singleton 제약을 깨뜨리고 스타일 충돌, 공유되지 않는 상태, 심하면 크래시를 유발할 수 있습니다.
+
+**권장 사항**: singleton을 유지해야 하는 라이브러리라면 모든 consumer가 같은 전역 최적화 번들을 로드하도록 **`server-calc`**를 우선 사용하세요. 꼭 `runtime-infer`를 써야 한다면 `usedExports`를 넓혀 생성되는 번들이 더 완전해지도록 하고 충돌 위험을 줄이세요.
+
+**3. tree shaking이 동작하려면 어떤 조건이 필요한가요?**
+
+주로 번들러의 정적 분석에 의존합니다. 컴파일러가 어떤 export가 사용되는지 판단할 수 있도록 코드가 ES module(`import`/`export`)을 사용해야 합니다. CommonJS(`require`/`module.exports`) 모듈은 보통 효과적으로 tree-shaking하기 어렵습니다.
+
+**4. 이미 릴리스된 프로젝트의 shared dependencies를 깨뜨리나요?**
+
+**아니요.** tree shaking의 데이터 소스와 로딩 경로는 기존 공유 메커니즘과 분리되어 있고, 엄격한 적중 조건과 안전한 fallback 동작이 있습니다. 안정적으로 운영 중인 기존 프로젝트에는 영향을 주지 않습니다.
+
+## 더 읽어보기
+
+* [How Shared Dependency Tree Shaking Works](https://github.com/module-federation/core/discussions/4302)

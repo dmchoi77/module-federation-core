@@ -1,0 +1,279 @@
+---
+title: "빠른 시작"
+---
+
+# Modern.js
+
+이 문서는 Modern.js에서 Module Federation 플러그인을 사용하는 방법을 설명합니다. Provider와 consumer 애플리케이션을 만드는 간단한 예제도 함께 다룹니다.
+
+:::tip
+
+* 예제 Demo [Modern.js SSR](https://github.com/module-federation/module-federation-examples/tree/master/modernjs-ssr)
+
+:::
+
+## 환경
+
+### Node.js
+
+시작하기 전에 [Node.js](https://nodejs.org/)를 설치하고, 버전이 v20.19.5 이상인지 확인하세요. **Node.js 22 LTS 사용을 권장합니다.**
+
+현재 사용 중인 Node.js 버전은 다음 명령으로 확인할 수 있습니다.
+
+```bash
+node -v
+```
+
+현재 환경에 Node.js가 없거나 설치된 버전이 v20.19.5보다 낮다면 [nvm](https://github.com/nvm-sh/nvm) 또는 [fnm](https://github.com/Schniz/fnm)으로 필요한 버전을 설치하세요.
+
+다음은 nvm으로 Node.js 22 LTS를 설치하는 예시입니다.
+
+```bash
+# Node.js 22 LTS 설치
+nvm install 22 --lts
+
+# 새로 설치한 Node.js 22를 기본 버전으로 설정
+nvm alias default 22
+
+# 새로 설치한 Node.js 22로 전환
+nvm use 22
+```
+
+:::tip nvm and fnm
+nvm과 fnm은 모두 Node.js 버전 관리 도구입니다. nvm은 더 오래 쓰여 안정적이고, fnm은 Rust로 구현되어 상대적으로 빠른 성능을 제공합니다.
+:::
+
+### pnpm
+
+의존성 관리는 [pnpm](https://pnpm.io/installation) 사용을 권장합니다.
+
+```bash
+npm install -g pnpm@8
+```
+
+:::note
+Modern.js는 `yarn`과 `npm`을 사용한 의존성 관리도 지원합니다.
+:::
+
+
+## 프로젝트 만들기
+
+`@modern-js/create`는 대화형 Q&A를 통해 프로젝트를 초기화합니다. 답변에 따라 기본 설정이 적용됩니다.
+
+### Consumer 생성
+
+```bash
+npx @modern-js/create@latest modern-consumer
+```
+
+### Provider 생성
+
+```bash
+npx @modern-js/create@latest modern-provider
+```
+
+### 플러그인 설치
+
+Module Federation은 Modern.js용 플러그인 `@module-federation/modern-js-v3`를 제공합니다.
+
+```bash
+pnpm add @module-federation/modern-js-v3
+```
+
+## Module Federation 설정
+
+### Provider
+
+#### 1. 설정 파일 만들기
+
+프로젝트 루트 디렉터리에 `module-federation.config.ts` 파일을 만들고 다음 내용을 작성합니다.
+
+```ts title='module-federation.config.ts'
+import { createModuleFederationConfig } from '@module-federation/modern-js-v3';
+
+export default createModuleFederationConfig({
+  name: 'provider',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './Image': './src/components/Image.tsx',
+  },
+  shared: {
+    react: { singleton: true },
+    'react-dom': { singleton: true },
+  },
+});
+```
+
+#### 2. 플러그인 적용
+
+`modern.config.ts`에서 `@module-federation/modern-js-v3`를 적용합니다.
+
+```ts title='modern.config.ts'
+import { appTools, defineConfig } from '@modern-js/app-tools';
+import { moduleFederationPlugin } from '@module-federation/modern-js-v3';
+
+// https://modernjs.dev/ko/configure/app/usage
+export default defineConfig({
+  server: {
+    ssr: {
+      mode: 'stream',
+    },
+    port: 3006,
+  },
+  plugins: [appTools(), moduleFederationPlugin()],
+});
+```
+
+#### 3. 노출할 컴포넌트 생성
+
+`src/components/Image.tsx` 파일을 만들고 다음 내용을 작성합니다.
+
+```tsx title='Image.tsx'
+import React from 'react';
+import styles from './Image.module.css';
+
+export default (): JSX.Element => (
+  <div
+    id="remote-components"
+    style={{
+      backgroundColor: '#1ee9c1',
+      color: 'lightgrey',
+      padding: '1rem',
+    }}
+  >
+    <h2>
+      <strong>remote</strong>&nbsp;image
+    </h2>
+    <button
+      id="remote-components-button"
+      style={{ marginBottom: '1rem' }}
+      onClick={() => alert('[remote-components] Client side Javascript works!')}
+    >
+      Click me to test i'm interactive!
+    </button>
+    <img
+      id="remote-components-image"
+      src="https://module-federation.io/module-federation-logo.svg"
+      style={{ width: '100px' }}
+      alt="serge"
+    />
+    <button className={styles['button']}>Button from remote</button>
+  </div>
+);
+```
+
+이어서 해당 style 파일을 다음과 같이 만듭니다.
+
+```css title='Image.module.css'
+.button {
+  background: red;
+}
+```
+
+### Consumer
+
+#### 1. 설정 파일 생성
+
+프로젝트 루트 디렉터리에 `module-federation.config.ts` 파일을 만들고 다음 내용을 작성합니다.
+
+```ts title='module-federation.config.ts'
+import { createModuleFederationConfig } from '@module-federation/modern-js-v3';
+
+export default createModuleFederationConfig({
+  name: 'consumer',
+  remotes: {
+    remote: 'provider@http://localhost:3006/mf-manifest.json',
+  },
+  shared: {
+    react: { singleton: true },
+    'react-dom': { singleton: true },
+  },
+});
+```
+
+#### 2. 플러그인 적용
+
+`modern.config.ts`에서 `@module-federation/modern-js-v3`를 적용합니다.
+
+```ts title='modern.config.ts'
+import { appTools, defineConfig } from '@modern-js/app-tools';
+import { moduleFederationPlugin } from '@module-federation/modern-js-v3';
+
+// https://modernjs.dev/ko/configure/app/usage
+export default defineConfig({
+
+  server: {
+    ssr: {
+      mode: 'stream',
+    },
+    port: 3007,
+  },
+  plugins: [appTools(), moduleFederationPlugin()],
+});
+```
+#### 3. 타입 hint
+
+producer의 타입을 가져올 수 있도록 `tsconfig.json`에 `paths`를 추가합니다.
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "*": ["./@mf-types/*"]
+    }
+  }
+}
+```
+#### 4. Provider 사용
+
+entry page(`src/routes/page.tsx`)를 수정해 producer가 제공하는 컴포넌트를 참조합니다. 내용은 다음과 같습니다.
+
+```tsx title='page.tsx'
+import ProviderImage from 'remote/Image';
+import './index.css';
+
+const Index = () => (
+  <div className="container-box">
+    <ProviderImage />
+  </div>
+);
+
+export default Index;
+```
+
+## CSS 깜빡임 문제
+
+프로젝트를 시작하고 `http://localhost:3007/`에 접속하면 SSR은 정상 동작하고 page도 렌더링되지만, style이 깜빡이는 문제가 나타날 수 있습니다. producer의 style 파일이 해당 HTML에 주입되지 못하기 때문입니다. 이 문제는 [createLazyComponent](/guide/bridge/react/load-component.html#what-is-createlazycomponent)로 해결할 수 있습니다.
+
+producer를 참조하는 consumer 코드를 다음처럼 수정합니다.
+
+```tsx title='src/routes/page.tsx'
+import { getInstance } from '@module-federation/modern-js-v3/runtime';
+import { lazyLoadComponentPlugin } from '@module-federation/modern-js-v3/data-fetch';
+import './index.css';
+
+const instance = getInstance();
+instance.registerPlugins([lazyLoadComponentPlugin()]);
+
+const RemoteSSRComponent = instance.createLazyComponent({
+  loader: () => import('remote/Image'),
+  loading: 'loading...',
+  export: 'default',
+  fallback: ({ error }) => {
+    if (error instanceof Error && error.message.includes('not exist')) {
+      return <div>fallback - not existed id</div>;
+    }
+    return <div>fallback</div>;
+  },
+});
+
+const Index = () => (
+  <div className="container-box">
+    <RemoteSSRComponent />
+  </div>
+);
+
+export default Index;
+```
+
+page를 수정한 뒤 다시 접속하면 반환되는 HTML에 producer의 style 파일이 자동으로 주입되는 것을 확인할 수 있습니다. 이렇게 하면 CSS 깜빡임 문제가 해결됩니다.

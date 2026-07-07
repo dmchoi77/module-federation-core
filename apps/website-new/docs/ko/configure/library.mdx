@@ -1,0 +1,101 @@
+# library
+
+`library`는 Module Federation container의 출력 라이브러리 형식을 설정합니다. 즉 container가 외부 consumer에 어떻게 노출될지 결정합니다.
+
+- 타입: `LibraryOptions`
+- 필수: 아니요
+- 기본값: `undefined`
+
+```ts
+interface LibraryOptions {
+  type: LibraryType;
+  name?: string | string[] | { amd?: string; commonjs?: string; root?: string | string[] };
+  export?: string | string[];
+  umdNamedDefine?: boolean;
+  amdContainer?: string;
+  auxiliaryComment?: string | {
+    amd?: string;
+    commonjs?: string;
+    commonjs2?: string;
+    root?: string;
+  };
+}
+
+type LibraryType =
+  | 'var' | 'module' | 'assign' | 'assign-properties'
+  | 'this' | 'window' | 'self' | 'global'
+  | 'commonjs' | 'commonjs2' | 'commonjs-module' | 'commonjs-static'
+  | 'amd' | 'amd-require' | 'umd' | 'umd2'
+  | 'jsonp' | 'system' | string;
+```
+
+## 타입
+
+- 타입: `LibraryType`
+- 필수: 예
+- 기본값: -
+
+container의 출력 라이브러리 타입을 지정합니다. 자주 사용하는 값은 다음과 같습니다.
+
+| 값 | 설명 |
+|---|---|
+| `'var'` | 전역 변수에 할당합니다(기본값). |
+| `'module'` | ESM 출력입니다(`experiments.outputModule: true` 필요). |
+| `'commonjs2'` | `module.exports`를 사용하는 CommonJS입니다. |
+| `'umd'` | AMD, CommonJS, 전역 변수와 호환됩니다. |
+| `'global'` | `global` 객체에 붙입니다. |
+| `'window'` | `window` 객체에 붙입니다. |
+| `'self'` | `self` 객체에 붙입니다. |
+| `'system'` | SystemJS 모듈 형식입니다. |
+
+## name
+
+- 타입: `string | string[] | LibraryCustomUmdObject`
+- 필수: 아니요
+- 기본값: `undefined`
+
+library의 이름입니다. `umd` 타입에서는 amd, commonjs, 전역 변수에 대해 각각 다른 이름을 지정할 수 있습니다.
+
+## export
+
+- 타입: `string | string[]`
+- 필수: 아니요
+- 기본값: `undefined`
+
+어떤 export를 library로 노출할지 지정합니다.
+
+## umdNamedDefine
+
+- 타입: `boolean`
+- 필수: 아니요
+- 기본값: `false`
+
+`type`이 `'umd'`일 때 AMD 모듈에 이름을 붙일지 정합니다. 즉 모듈 이름을 `define()`에 전달할지 결정합니다.
+
+## amdContainer
+
+- 타입: `string`
+- 필수: 아니요
+- 기본값: `undefined`
+
+AMD 모듈의 `define`/`require` 함수에 container prefix를 추가합니다.
+
+## auxiliaryComment
+
+- 타입: `string | object`
+- 필수: 아니요
+- 기본값: `undefined`
+
+각 모듈 형식의 UMD wrapper에 comment를 추가합니다.
+
+## 예제
+
+```ts
+new ModuleFederationPlugin({
+  name: '@demo/provider',
+  library: { type: 'var', name: 'provider' },
+  exposes: {
+    './Button': './src/Button',
+  },
+});
+```

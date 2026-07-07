@@ -1,0 +1,314 @@
+import { Badge } from '@theme';
+
+<div style={{float:"right"}}><Badge text="App Router 미지원" type="danger" /></div>
+
+# Next.js 통합 개요
+
+:::danger 프로젝트 지원 종료 예정
+Next.js 지원은 종료될 예정입니다. [자세히 보기](https://github.com/module-federation/core/issues/3153)
+:::
+
+이 플러그인은 Next.js에서 Module Federation을 사용할 수 있게 합니다.
+
+## 지원 범위
+
+- next ^15 || ^14 || ^13 || ^12
+- 서버 사이드 렌더링
+- Pages Router
+
+아래 예제 애플리케이션은 기능을 가장 잘 활용한 사례이므로 참고를 권장합니다.
+https://github.com/module-federation/module-federation-examples
+
+## 요구사항
+
+이 플러그인 내부에서도 `process.env.NEXT_PRIVATE_LOCAL_WEBPACK = 'true'`를 설정하지만, 가능하면 환경 변수나 명령줄 export로 직접 설정하는 것이 좋습니다.
+
+"Local Webpack"은 Webpack을 의존성으로 직접 설치해야 한다는 뜻입니다. 이 경우 Next.js는 내장된 Webpack 사본을 사용하지 않습니다. 플러그인이 Webpack 내부에 접근해야 하므로 내장 사본으로는 동작할 수 없습니다.
+
+- `cross-env NEXT_PRIVATE_LOCAL_WEBPACK=true next dev` 또는 `next build`
+- `npm install webpack`
+
+## 사용법
+
+```js
+import React, { lazy } from 'react';
+const SampleComponent = lazy(() => import('next2/sampleComponent'));
+```
+
+hydration 오류를 피하려면 federated component를 lazy loading할 때 `next/dynamic` 대신 `React.lazy`를 사용하세요.
+
+### 구현 예시: https://github.com/module-federation/module-federation-examples/tree/master/nextjs-v13/home/pages
+
+페이지 단위로 async boundary를 설치한 뒤에는 다음처럼 사용할 수 있습니다.
+
+```js
+const SomeHook = require('next2/someHook');
+import SomeComponent from 'next2/someComponent';
+```
+
+## 데모
+
+동작 예시는 여기에서 확인할 수 있습니다: https://github.com/module-federation/module-federation-examples/tree/master/nextjs-ssr
+
+## 옵션
+
+이 플러그인은 `ModuleFederationPlugin`과 같은 방식으로 동작하므로 평소처럼 사용할 수 있습니다.
+React와 Next 관련 내부 패키지는 플러그인이 자동으로 공유합니다.
+
+또한 `NextFederationPlugin`에는 `extraOptions`라는 선택 인자가 있어 플러그인의 추가 기능을 활성화할 수 있습니다.
+
+```js
+new NextFederationPlugin({
+  name: '',
+  filename: '',
+  remotes: {},
+  exposes: {},
+  shared: {},
+  extraOptions: {
+    debug: boolean, // `false` by default
+    exposePages: boolean, // `false` by default
+    enableImageLoaderFix: boolean, // `false` by default
+    enableUrlLoaderFix: boolean, // `false` by default
+    skipSharingNextInternals: boolean, // `false` by default
+  },
+});
+```
+
+- `debug` – 디버그 모드를 활성화합니다. 내부 동작에 대한 추가 정보를 출력합니다.
+- `exposePages` – 모든 Next.js 페이지와 해당 `./pages-map`을 자동으로 expose합니다.
+- `enableImageLoaderFix` – `nextjs-image-loader`로 번들링된 모든 애셋에 공개 호스트 이름을 추가합니다. 예를 들어 `http://example.com`에서 remoteEntry를 제공하면 모든 번들 애셋이 런타임에 이 호스트 이름을 사용합니다. Federated module을 위한 HTML의 Base URL과 비슷한 역할입니다.
+- `enableUrlLoaderFix` – `url-loader`로 번들링된 모든 애셋에 공개 호스트 이름을 추가합니다.
+- `skipSharingNextInternals` – Next internals 공유를 비활성화합니다. Next internals를 직접 공유하고 싶거나 이 플러그인을 Next가 아닌 애플리케이션에서 사용하려면 이 옵션을 사용할 수 있습니다.
+
+## 데모
+
+동작 예시는 여기에서 확인할 수 있습니다: https://github.com/module-federation/module-federation-examples/pull/2147
+
+## 플러그인 구현하기
+
+1. 모듈을 노출할 앱의 `next.config.js`에서 `NextFederationPlugin`을 사용합니다. 여기서는 이 앱을 `next2`라고 부르겠습니다.
+
+```js
+// next.config.js
+// either from default
+const NextFederationPlugin = require('@module-federation/nextjs-mf');
+
+module.exports = {
+  webpack(config, options) {
+    const { isServer } = options;
+    config.plugins.push(
+      new NextFederationPlugin({
+        name: 'next2',
+        remotes: {
+          next1: `next1@http://localhost:3001/_next/static/${
+            isServer ? 'ssr' : 'chunks'
+          }/remoteEntry.js`,
+        },
+        filename: 'static/chunks/remoteEntry.js',
+        exposes: {
+          './title': './components/exposedTitle.js',
+          './checkout': './pages/checkout',
+        },
+        shared: {
+          // whatever else
+        },
+      }),
+    );
+
+    return config;
+  },
+};
+```
+
+```js
+// next.config.js
+
+const NextFederationPlugin = require('@module-federation/nextjs-mf');
+
+module.exports = {
+  webpack(config, options) {
+    const { isServer } = options;
+    config.plugins.push(
+      new NextFederationPlugin({
+        name: 'next1',
+        remotes: {
+          next2: `next2@http://localhost:3000/_next/static/${
+            isServer ? 'ssr' : 'chunks'
+          }/remoteEntry.js`,
+        },
+      }),
+    );
+
+    return config;
+  },
+};
+```
+
+4. `react.lazy`, low-level API, 또는 `require`/`import`로 remote를 가져옵니다.
+
+```js
+import React, { lazy } from 'react';
+
+const SampleComponent = lazy(() =>
+  window.next2.get('./sampleComponent').then((factory) => {
+    return { default: factory() };
+  }),
+);
+
+// or
+
+const SampleComponent = lazy(() => import('next2/sampleComponent'));
+
+//or
+
+import Sample from 'next2/sampleComponent';
+```
+
+## 런타임 플러그인
+
+federation에 확장성과 "미들웨어"를 더하려면 `@module-federation/enhanced/runtime`을 참고하세요.
+
+```js
+// next.config.js
+new NextFederationPlugin({
+  runtimePlugins: [require.resolve('./path/to/myRuntimePlugin.js')],
+});
+```
+
+## 유틸리티
+
+`loadRemote`는 제거되었습니다. 대신 새 런타임 API를 사용할 수 있습니다: https://module-federation.io/guide/runtime/runtime-api.html#loadremote
+
+**revalidate**
+
+프로덕션에서 node 서버의 hot reload를 활성화합니다. 클라이언트 hot reload가 아닙니다.
+이 설정을 권장합니다. 설정하지 않으면 서버를 완전히 재시작하기 전까지 remote 업데이트를 가져올 수 없습니다.
+
+자세한 내용은 여기에서 확인할 수 있습니다: https://github.com/module-federation/nextjs-mf/tree/main/packages/node#utilities
+
+```js
+// __document.js
+
+import { revalidate } from '@module-federation/nextjs-mf/utils';
+import Document, { Html, Head, Main, NextScript } from 'next/document';
+class MyDocument extends Document {
+  static async getInitialProps(ctx) {
+    const initialProps = await Document.getInitialProps(ctx);
+
+    // 원하는 라이프사이클이나 구현 방식으로 바꿀 수 있습니다.
+    ctx?.res?.on('finish', () => {
+      revalidate().then((shouldUpdate) => {
+        console.log('finished sending response', shouldUpdate);
+      });
+    });
+
+    return initialProps;
+  }
+  render() {
+    return (
+      <Html>
+        <Head />
+        <body>
+          <Main />
+          <NextScript />
+        </body>
+      </Html>
+    );
+  }
+}
+```
+
+## Express.js에서 사용하기
+
+Express.js hot reload에는 추가 단계가 필요합니다: https://github.com/module-federation/core/blob/main/packages/node/README.md
+
+## 기본으로 공유되는 항목
+
+내부적으로 일부 Next internals는 자동으로 공유됩니다.
+이 패키지들을 직접 공유할 필요는 없습니다. Next internals를 직접 공유하면 오류가 발생할 수 있습니다.
+
+<details>
+<summary>`DEFAULT_SHARE_SCOPE` 보기:</summary>
+
+```ts
+export const DEFAULT_SHARE_SCOPE: SharedObject = {
+  'next/dynamic': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/head': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/link': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/router': {
+    requiredVersion: false,
+    singleton: true,
+    import: undefined,
+  },
+  'next/image': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  'next/script': {
+    requiredVersion: undefined,
+    singleton: true,
+    import: undefined,
+  },
+  react: {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react/': {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react-dom/': {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react-dom': {
+    singleton: true,
+    requiredVersion: false,
+    import: false,
+  },
+  'react/jsx-dev-runtime': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'react/jsx-runtime': {
+    singleton: true,
+    requiredVersion: false,
+  },
+  'styled-jsx': {
+    singleton: true,
+    import: undefined,
+    version: require('styled-jsx/package.json').version,
+    requiredVersion: '^' + require('styled-jsx/package.json').version,
+  },
+  'styled-jsx/style': {
+    singleton: true,
+    import: false,
+    version: require('styled-jsx/package.json').version,
+    requiredVersion: '^' + require('styled-jsx/package.json').version,
+  },
+  'styled-jsx/css': {
+    singleton: true,
+    import: undefined,
+    version: require('styled-jsx/package.json').version,
+    requiredVersion: '^' + require('styled-jsx/package.json').version,
+  },
+};
+```
+
+</details>

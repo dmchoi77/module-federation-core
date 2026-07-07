@@ -1,0 +1,983 @@
+# 런타임 API
+
+import { Steps, Tab, Tabs, Badge, Aside } from '@theme';
+import Collapse from '@components/Collapse';
+
+MF 런타임 API는 `ModuleFederation` 인스턴스를 중심으로 동작합니다. 기본 인스턴스는 보통 빌드 플러그인이 자동으로 생성하므로, 런타임 API를 호출할 때 인스턴스를 명시적으로 넘길 필요가 없습니다. 별도 인스턴스를 지정하지 않으면 런타임의 기본 인스턴스에 적용됩니다.
+
+## createInstance
+
+새 `ModuleFederation` 인스턴스를 만들 때 사용합니다. 다른 런타임 API와 달리 `createInstance`는 기본 인스턴스에 작용하지 않고, 기본 인스턴스와 분리된 새 인스턴스를 반환합니다.
+
+**사용 시점**
+
+대부분의 경우 기본 인스턴스 패턴으로 충분합니다. `createInstance`는 다음 상황에서만 필요합니다.
+
+- 빌드 플러그인을 사용하지 않는 경우(pure runtime 시나리오)
+- 같은 애플리케이션 안에서 서로 다른 설정을 가진 `ModuleFederation` 인스턴스를 여러 개 만들어야 하는 경우
+- Module Federation의 partitioning 기능을 활용해 다른 프로젝트에서 사용할 API 묶음을 캡슐화하려는 경우
+
+**동작**
+
+- 호출할 때마다 새 인스턴스를 만들고 전역 인스턴스 목록에 추가합니다.
+- `name` / `version` 기준으로 기존 인스턴스를 찾지 않으며, 새 옵션을 기존 인스턴스에 병합하지 않습니다.
+- 새 인스턴스는 기본 인스턴스를 대체하지 않습니다. 다른 곳에서 가져와야 한다면 [getInstance](#getinstance)를 사용하세요.
+
+**예제**
+
+```ts
+import { createInstance } from '@module-federation/enhanced/runtime';
+
+const mf = createInstance({
+  name: 'host',
+  remotes: [
+    {
+      name: 'sub1',
+      entry: 'http://localhost:8080/mf-manifest.json'
+    }
+  ]
+});
+
+mf.loadRemote('sub1/util').then((m) => m.add(1, 2, 3));
+```
+
+## init <Badge type='warning'>주의해서 사용</Badge>
+
+`ModuleFederation` 런타임 인스턴스를 초기화하거나 재사용할 때 사용합니다.
+
+`init`은 항상 새 인스턴스를 만들지는 않습니다. 호출되면 런타임은 먼저 `name`과 `version`이 일치하는 기존 인스턴스를 찾습니다. 일치하는 인스턴스가 있으면 그것을 재사용하고, 새 옵션은 `instance.initOptions(options)`를 통해 병합합니다. 일치하는 인스턴스가 없을 때만 새 인스턴스를 만듭니다.
+
+따라서 같은 host를 여러 번 초기화하면서 동일한 런타임 인스턴스를 재사용하고 확장해야 하는 경우에 `init`이 더 적합합니다.
+
+:::warning
+
+- 완전히 독립적인 새 인스턴스를 만들어야 한다면 [createInstance](#createinstance)를 사용하세요.
+- 빌드 플러그인이 만든 인스턴스에 접근하기만 하면 된다면 [getInstance](#getinstance)를 사용하세요.
+
+:::
+
+- 타입: `init(options: InitOptions): ModuleFederation`
+
+<Collapse title="InitOptions Type">
+```ts
+type InitOptions {
+  // 현재 host 이름
+  name: string;
+  // 의존하는 remote module 목록
+  // tip: runtime에 설정한 remotes는 빌드 플러그인에서 전달한 값과 타입 및 데이터가 완전히 일치하지 않습니다.
+  remotes: Array<RemoteInfo>;
+  // 현재 host가 공유해야 하는 의존성 목록
+  // 빌드 플러그인을 사용할 때는 공유할 의존성을 빌드 플러그인에서 설정할 수 있고, 빌드 플러그인이 runtime의 shared 설정에 해당 의존성을 주입합니다.
+  // 런타임에 shared를 전달할 때는 버전 인스턴스 참조를 직접 전달해야 합니다. 런타임에서 직접 얻을 수 없기 때문입니다.
+  shared?: {
+    [pkgName: string]: ShareArgs | ShareArgs[];
+  };
+};
+
+type ShareArgs =
+  | (SharedBaseArgs & { get: SharedGetter })
+  | (SharedBaseArgs & { lib: () => Module });
+
+type SharedBaseArgs = {
+  version: string;
+  shareConfig?: SharedConfig;
+  scope?: string | Array<string>;
+  deps?: Array<string>;
+  strategy?: 'version-first' | 'loaded-first';
+};
+
+type SharedGetter = (() => () => Module) | (() => Promise<() => Module>);
+
+type RemoteInfo = {
+  alias?: string;
+};
+
+interface RemotesWithEntry {
+  name: string;
+  entry: string;
+}
+
+type ShareInfos = {
+  // 의존성의 패키지 이름, 기본 정보, 공유 전략
+  [pkgName: string]: Share;
+};
+
+type Share = {
+  // shared dependencies의 버전
+  version: string;
+  // 현재 shared dependencies를 소비하는 모듈
+  useIn?: Array<string>;
+  // shared dependencies가 제공되는 모듈
+  from?: string;
+  // shared dependencies 인스턴스를 가져오는 팩토리 함수입니다. 캐시된 공유 인스턴스를 로드할 수 없으면 자체 shared dependencies를 로드합니다.
+  lib: () => Module;
+  // shared dependencies 재사용 여부를 결정하는 공유 전략
+  shareConfig?: SharedConfig;
+  // shared dependencies 간 의존 관계
+  deps?: Array<string>;
+  // 현재 shared dependencies가 배치될 scope입니다. 기본값은 default입니다.
+  scope?: string | Array<string>;
+};
+```
+
+</Collapse>
+
+<Collapse title="예제">
+
+
+```ts
+import { init, loadRemote } from '@module-federation/enhanced/runtime';
+
+init({
+  name: "mf_host",
+  remotes: [
+    {
+      name: "remote",
+      // alias를 설정한 뒤에는 alias로 직접 로드할 수 있습니다.
+      alias: "app1",
+      // 모듈의 manifest.json 파일 주소를 지정해 로드할 모듈을 결정합니다.
+      entry: "http://localhost:2001/mf-manifest.json"
+    }
+  ],
+});
+```
+
+</Collapse>
+
+:::tip 권장 마이그레이션
+
+현재 코드에서 `init`을 사용하고 있다면 시나리오에 맞는 권장 방식으로 마이그레이션할 수 있습니다.
+
+:::
+
+### 마이그레이션 옵션 - 빌드 플러그인을 사용하는 경우
+
+`init` 호출을 제거하고 [getInstance](#getinstance)로 인스턴스를 가져옵니다. 이후 [registerRemotes](#registerremotes) / [registerShared](#registershared) / [registerPlugins](#registerplugins)를 사용해 기존에 `init`에 넘기던 옵션을 등록합니다.
+
+```diff
+- import { init } from '@module-federation/enhanced/runtime';
++ import { registerShared, registerRemotes, registerPlugins, getInstance } from '@module-federation/enhanced/runtime';
+  import React from 'react';
+  import mfRuntimePlugin from 'mf-runtime-plugin';
+
+- const instance = init({
+-   name: 'mf_host',
+-   remotes: [
+-     {
+-       name: 'remote',
+-       entry: 'http://localhost:2001/mf-manifest.json',
+-     },
+-   ],
+-   shared: {
+-     react: {
+-       version: '18.0.0',
+-       scope: 'default',
+-       lib: () => React,
+-       shareConfig: {
+-         singleton: true,
+-         requiredVersion: '^18.0.0',
+-       },
+-     },
+-   },
+-   plugins: [mfRuntimePlugin()],
+- });
++ const instance = getInstance();
++ registerRemotes([
++   {
++     name: 'remote',
++     entry: 'http://localhost:2001/mf-manifest.json',
++   },
++ ]);
++ registerShared({
++   react: {
++     version: '18.0.0',
++     scope: 'default',
++     lib: () => React,
++     shareConfig: {
++       singleton: true,
++       requiredVersion: '^18.0.0',
++     },
++   },
++ });
++ registerPlugins([mfRuntimePlugin()]);
+```
+
+### 마이그레이션 옵션 - 순수 런타임
+
+[createInstance](#createinstance)로 바로 전환하면 됩니다. 옵션 형태는 그대로 유지됩니다. 다만 의미가 다르다는 점에 주의하세요. `createInstance`는 항상 새 인스턴스를 만들지만, `init`은 같은 `name` / `version`을 가진 기존 인스턴스를 재사용하고 새 옵션을 병합할 수 있습니다.
+
+```diff
+- import { init } from '@module-federation/enhanced/runtime';
++ import { createInstance } from '@module-federation/enhanced/runtime';
+
+- const instance = init({
++ const instance = createInstance({
+    name: 'mf_host',
+    remotes: [
+      {
+        name: 'remote',
+        entry: 'http://localhost:2001/mf-manifest.json',
+      },
+    ],
+    shared: {
+      react: {
+        version: '18.0.0',
+        scope: 'default',
+        lib: () => React,
+        shareConfig: {
+          singleton: true,
+          requiredVersion: '^18.0.0',
+        },
+      },
+    },
+    plugins: [mfRuntimePlugin()],
+  });
+```
+
+## getInstance
+
+- 타입: `getInstance(): ModuleFederation | null`
+- 타입: `getInstance(finder: (instance: ModuleFederation) => boolean): ModuleFederation | null`
+- 기본 `ModuleFederation` 인스턴스 또는 finder 콜백과 일치하는 첫 번째 등록 인스턴스를 반환합니다.
+
+기본 인스턴스가 빌드 플러그인 또는 [init](#init)으로 생성된 뒤에는 `getInstance()`를 호출해 가져올 수 있습니다.
+
+
+```ts
+import { getInstance } from '@module-federation/enhanced/runtime';
+
+const mfInstance = getInstance();
+if (!mfInstance) {
+  throw new Error('Module Federation instance is not initialized');
+}
+
+mfInstance.loadRemote('remote/util');
+```
+
+빌드 플러그인을 사용하지 않는 상태에서 `getInstance`를 호출하면 예외가 발생합니다. 이 경우 [createInstance](#createinstance)로 새 인스턴스를 만들어야 합니다.
+
+[createInstance](#createinstance)로 만든 인스턴스는 기본 인스턴스를 대체하지 않지만 전역 인스턴스 목록에는 등록됩니다. 따라서 반환된 참조를 보관하지 않았더라도 나중에 finder 콜백을 `getInstance`에 전달해 찾을 수 있습니다.
+
+finder 콜백은 `Array.prototype.find`처럼 동작합니다. 런타임이 현재 등록된 인스턴스를 순회하며 첫 번째 일치 항목을 반환합니다. 일치하는 인스턴스가 없으면 `getInstance`는 `null`을 반환합니다.
+
+```ts
+const targetInstance = getInstance(
+  (instance) => instance.name === 'remote-host',
+);
+
+if (targetInstance) {
+  targetInstance.loadRemote('remote/util');
+}
+```
+
+## registerRemotes
+
+<Collapse>
+
+```typescript
+function registerRemotes(remotes: Remote[], options?: { force?: boolean }) {}
+
+type Remote = (RemoteWithEntry | RemoteWithVersion) & RemoteInfoCommon;
+
+interface RemoteInfoCommon {
+  alias?: string;
+  shareScope?: string;
+  type?: RemoteEntryType;
+  entryGlobalName?: string;
+}
+
+interface RemoteWithEntry {
+  name: string;
+  entry: string;
+}
+
+interface RemoteWithVersion {
+  name: string;
+  version: string;
+}
+```
+
+</Collapse>
+
+:::warning
+
+`force: true`를 설정하면 새로 등록한 모듈이 이미 등록되고 로드된 모듈을 덮어쓰며, 로드된 모듈의 cache도 자동으로 삭제됩니다. 이 작업이 위험하다는 warning도 console에 출력됩니다.
+
+:::
+
+<Tabs>
+  <Tab label="빌드 플러그인 사용">
+  ```tsx
+  import { registerRemotes } from '@module-federation/enhanced/runtime';
+
+  // 새 remote sub2 등록
+  registerRemotes([
+    {
+      name: 'sub2',
+      entry: 'http://localhost:2002/mf-manifest.json',
+    }
+  ]);
+
+  // remote sub1 덮어쓰기
+  registerRemotes([
+    {
+      name: 'sub1',
+      entry: 'http://localhost:2003/mf-manifest.json',
+    }
+  ], { force: true });
+  ```
+  </Tab>
+  <Tab label="Pure Runtime (빌드 플러그인 미사용)">
+  ```ts
+  import { createInstance } from '@module-federation/enhanced/runtime';
+
+  const mf = createInstance({
+    name: 'mf_host',
+    remotes: [
+      {
+        name: 'sub1',
+        entry: 'http://localhost:2001/mf-manifest.json',
+      }
+    ]
+  });
+
+  // 새 remote sub2 등록
+  mf.registerRemotes([
+    {
+      name: 'sub2',
+      entry: 'http://localhost:2002/mf-manifest.json',
+    }
+  ]);
+
+  // remote sub1 덮어쓰기
+  mf.registerRemotes([
+    {
+      name: 'sub1',
+      entry: 'http://localhost:2003/mf-manifest.json',
+    }
+  ], { force: true });
+  ```
+  </Tab>
+</Tabs>
+
+## registerPlugins
+
+```typescript
+function registerPlugins(plugins: ModuleFederationRuntimePlugin[]) {}
+```
+
+<Tabs>
+  <Tab label="빌드 플러그인 사용">
+  ```tsx
+  import { registerPlugins } from '@module-federation/enhanced/runtime';
+  import runtimePlugin from './custom-runtime-plugin';
+
+  // 새 runtime plugin 추가
+  registerPlugins([runtimePlugin()]);
+
+  registerPlugins([
+    {
+      name: 'custom-plugin-runtime',
+      beforeInit(args) {
+        const { userOptions, origin } = args;
+        if (origin.options.name && origin.options.name !== userOptions.name) {
+          userOptions.name = origin.options.name;
+        }
+        console.log('[build time inject] beforeInit: ', args);
+        return args;
+      },
+      beforeLoadShare(args) {
+        console.log('[build time inject] beforeLoadShare: ', args);
+        return args;
+      },
+      createLink({ url }) {
+        const link = document.createElement('link');
+        link.setAttribute('href', url);
+        link.setAttribute('rel', 'preload');
+        link.setAttribute('as', 'script');
+        link.setAttribute('crossorigin', 'anonymous');
+        return link;
+      },
+    }
+  ]);
+  ```
+  </Tab>
+  <Tab label="Pure Runtime (빌드 플러그인 미사용)">
+  ```ts
+  import { createInstance } from '@module-federation/enhanced/runtime';
+  import runtimePlugin from './custom-runtime-plugin';
+
+  const mf = createInstance({
+    name: 'mf_host',
+    remotes: [
+      {
+        name: 'sub1',
+        entry: 'http://localhost:2001/mf-manifest.json',
+      }
+    ]
+  });
+
+  // 새 런타임 플러그인 추가
+  mf.registerPlugins([runtimePlugin()]);
+
+  mf.registerPlugins([
+    {
+      name: 'custom-plugin-runtime',
+      beforeInit(args) {
+        const { userOptions, origin } = args;
+        if (origin.options.name && origin.options.name !== userOptions.name) {
+          userOptions.name = origin.options.name;
+        }
+        console.log('[build time inject] beforeInit: ', args);
+        return args;
+      },
+      beforeLoadShare(args) {
+        console.log('[build time inject] beforeLoadShare: ', args);
+        return args;
+      },
+      createLink({ url }) {
+        const link = document.createElement('link');
+        link.setAttribute('href', url);
+        link.setAttribute('rel', 'preload');
+        link.setAttribute('as', 'script');
+        link.setAttribute('crossorigin', 'anonymous');
+        return link;
+      },
+    }
+  ]);
+  ```
+  </Tab>
+</Tabs>
+
+## registerGlobalPlugins
+
+```typescript
+function registerGlobalPlugins(plugins: ModuleFederationRuntimePlugin[]): void {}
+```
+
+단일 current instance가 아니라 전역 federation 상태에 플러그인을 등록합니다. 다음과 같은 상황에 적합합니다.
+
+- 공통 instrumentation
+- 환경 전체에 적용할 정책
+- host 전체에 적용할 기본 플러그인
+
+전역 플러그인은 `plugin.name` 기준으로 중복 제거됩니다.
+
+```ts
+import { registerGlobalPlugins, createInstance } from '@module-federation/enhanced/runtime';
+
+import runtimePlugin from './runtime-plugin';
+
+registerGlobalPlugins([runtimePlugin()]);
+
+const mf = createInstance({
+  name: 'mf_host',
+  remotes: [
+    {
+      name: 'sub1',
+      entry: 'http://localhost:2001/mf-manifest.json',
+    },
+  ],
+});
+```
+
+예측 가능한 동작을 위해 런타임 인스턴스를 만들거나 사용하기 전에 전역 플러그인을 등록하세요.
+
+## registerShared
+
+host의 shared dependencies를 등록합니다. 런타임은 전역 상태에 이미 존재하고 조건을 만족하는 shared dependencies를 우선 재사용합니다. 그렇지 않으면 여기 등록된 의존성으로 fallback합니다.
+
+```typescript
+function registerShared(shared: Shared): void;
+
+type Shared = {
+  // shared dependencies 패키지 이름 매핑입니다. 같은 패키지를 여러 버전(배열 형식)으로 등록할 수 있습니다.
+  [pkgName: string]: ShareArgs | ShareArgs[];
+};
+
+/**
+ * ShareArgs must provide either lib or get
+ *
+ * lib: 호출 즉시 모듈을 반환하는 동기 팩토리 함수입니다. Promise를 반환하면 안 됩니다.
+ * `registerShared` 호출 시점에 모듈을 이미 사용할 수 있는 경우에 적합합니다. 예: `import React from 'react'`
+ *
+ * get: async 또는 lazy loading 시나리오에 사용합니다.
+ * */
+type ShareArgs =
+  | (SharedBaseArgs & { lib: () => Module })
+  | (SharedBaseArgs & { get: SharedGetter })
+  | SharedBaseArgs;
+
+type SharedBaseArgs = {
+  // 등록할 버전 번호입니다. 버전을 구분할 때 사용하는 것을 권장합니다.
+  version?: string;
+  // singleton, requiredVersion 등을 제어하는 공유 전략
+  shareConfig?: SharedConfig;
+  // 속한 scope입니다. 기본값은 'default'이며 여러 scope에 동시에 둘 수 있습니다.
+  scope?: string | Array<string>;
+  // 이 shared dependencies가 의존하는 다른 shared dependencies 이름입니다.
+  deps?: Array<string>;
+  // 버전 선택 전략입니다. 버전 번호 우선 또는 이미 로드된 인스턴스 우선을 선택합니다.
+  strategy?: 'version-first' | 'loaded-first';
+  loaded?: boolean;
+};
+
+interface SharedConfig {
+  singleton?: boolean;
+  requiredVersion: false | string;
+  eager?: boolean;
+  strictVersion?: boolean;
+  layer?: string | null;
+}
+
+type SharedGetter = (() => () => Module) | (() => Promise<() => Module>);
+```
+
+<Tabs>
+  <Tab label="빌드 플러그인 사용">
+  ```tsx
+  import { registerShared } from '@module-federation/enhanced/runtime';
+  import React from 'react';
+  import ReactDom from 'react-dom';
+
+  registerShared({
+    react: {
+      version: '18.0.0',
+      scope: 'default',
+      lib: () => React,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^18.0.0',
+      },
+    },
+    'react-dom': {
+      version: '18.0.0',
+      scope: 'default',
+      lib: () => ReactDom,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^18.0.0',
+      },
+    },
+    antd: {
+      version: '1.0.0',
+      scope: 'default',
+      get: () => import('antd').then((m) => () => m),
+    },
+  });
+  ```
+  </Tab>
+  <Tab label="Pure Runtime (빌드 플러그인 미사용)">
+  ```ts
+  import { createInstance } from '@module-federation/enhanced/runtime';
+  import React from 'react';
+  import ReactDom from 'react-dom';
+
+  const mf = createInstance({
+    name: 'mf_host',
+    remotes: [
+      {
+        name: 'sub1',
+        entry: 'http://localhost:2001/mf-manifest.json',
+      }
+    ]
+  });
+
+  mf.registerShared({
+    react: {
+      version: '18.0.0',
+      scope: 'default',
+      lib: () => React,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^18.0.0',
+      },
+    },
+    'react-dom': {
+      version: '18.0.0',
+      scope: 'default',
+      lib: () => ReactDom,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^18.0.0',
+      },
+    },
+    antd: {
+      version: '1.0.0',
+      scope: 'default',
+      get: () => import('antd').then((m) => () => m),
+    },
+  });
+  ```
+  </Tab>
+</Tabs>
+
+## loadShare
+
+
+```ts
+type loadShare = (
+  pkgName: string,
+  extraOptions?: {
+    customShareInfo?: Partial<Shared>;
+    resolver?: (sharedOptions: ShareInfos[string]) => Shared;
+  }
+) => Promise<() => ShareModule>;
+```
+
+`share` 의존성을 가져옵니다. 전역 환경에 현재 `host` 요구사항을 만족하는 `share` 의존성이 있으면, 조건을 만족하는 기존 의존성을 먼저 재사용합니다. 그렇지 않으면 자체 의존성을 로드하고 이후 재사용을 위해 전역 캐시에 저장합니다.
+
+이 `API`는 **일반적으로 사용자가 직접 호출하지 않습니다. 빌드 플러그인이 자체 의존성을 변환할 때 사용합니다**.
+
+<Tabs>
+  <Tab label="빌드 플러그인 사용">
+  ```tsx
+  import { registerShared, loadShare } from '@module-federation/enhanced/runtime';
+  import React from 'react';
+  import ReactDom from 'react-dom';
+
+  registerShared({
+    react: {
+      version: '17.0.0',
+      scope: 'default',
+      lib: () => React,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^17.0.0',
+      },
+    },
+    'react-dom': {
+      version: '17.0.0',
+      scope: 'default',
+      lib: () => ReactDom,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^17.0.0',
+      },
+    },
+  });
+
+  loadShare('react').then((reactFactory) => {
+    console.log(reactFactory());
+  });
+  ```
+  </Tab>
+  <Tab label="Pure Runtime (빌드 플러그인 미사용)">
+  ```ts
+  import { createInstance } from '@module-federation/enhanced/runtime';
+  import React from 'react';
+  import ReactDom from 'react-dom';
+
+  const mf = createInstance({
+    name: 'mf_host',
+    remotes: [
+      {
+        name: 'remote',
+        entry: 'http://localhost:2001/mf-manifest.json',
+        alias: 'app1',
+      }
+    ]
+  });
+
+  mf.registerShared({
+    react: {
+      version: '17.0.0',
+      scope: 'default',
+      lib: () => React,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^17.0.0',
+      },
+    },
+    'react-dom': {
+      version: '17.0.0',
+      scope: 'default',
+      lib: () => ReactDom,
+      shareConfig: {
+        singleton: true,
+        requiredVersion: '^17.0.0',
+      },
+    },
+  });
+
+  mf.loadShare('react').then((reactFactory) => {
+    console.log(reactFactory());
+  });
+  ```
+  </Tab>
+</Tabs>
+
+shared dependencies의 여러 version이 설정되어 있으면 기본적으로 로드된 것 중 가장 높은 version이 반환됩니다. 이 동작은 `extraOptions.resolver`를 설정해 바꿀 수 있습니다.
+
+```ts
+loadShare('react', {
+  resolver: (sharedOptions) => {
+    return (
+      sharedOptions.find((i) => i.version === '17.0.0') ?? sharedOptions[0]
+    );
+  },
+}).then((reactFactory) => {
+  console.log(reactFactory()); // { version: '17.0.0' }
+});
+```
+
+## loadRemote
+
+이 API는 런타임에 remote 모듈을 로드할 때 사용합니다.
+
+```ts
+type loadRemote = (remoteNameOrAlias: string) => Promise<RemoteModule>;
+```
+
+<Tabs>
+  <Tab label="빌드 플러그인 사용">
+  ```tsx
+  import { loadRemote } from '@module-federation/enhanced/runtime';
+
+  // remoteName + expose
+  loadRemote('remote/util').then((m) => m.add(1, 2, 3));
+
+  // alias + expose
+  loadRemote('app1/util').then((m) => m.add(1, 2, 3));
+  ```
+  </Tab>
+  <Tab label="Pure Runtime (빌드 플러그인 미사용)">
+  ```ts
+  import { createInstance } from '@module-federation/enhanced/runtime';
+
+  const mf = createInstance({
+    name: 'mf_host',
+    remotes: [
+      {
+        name: 'remote',
+        entry: 'http://localhost:2001/mf-manifest.json',
+        alias: 'app1',
+      }
+    ]
+  });
+
+  // remoteName + expose
+  mf.loadRemote('remote/util').then((m) => m.add(1, 2, 3));
+
+  // alias + expose
+  mf.loadRemote('app1/util').then((m) => m.add(1, 2, 3));
+  ```
+  </Tab>
+</Tabs>
+
+## preloadRemote
+
+<Collapse>
+
+```typescript
+async function preloadRemote(preloadOptions: Array<PreloadRemoteArgs>){}
+
+type depsPreloadArg = Omit<PreloadRemoteArgs, 'depsRemote'>;
+type PreloadRemoteArgs = {
+  // 프리로드할 remote의 이름 또는 alias
+  nameOrAlias: string;
+  // preload할 exposes
+  // 기본적으로 모든 exposes를 preload합니다.
+  // exposes를 제공하면 필요한 exposes만 로드합니다.
+  exposes?: Array<string>; // 기본 요청
+  // 기본값은 sync이며 expose가 참조하는 동기 코드만 로드합니다.
+  // all로 설정하면 동기/비동기 참조를 모두 로드합니다.
+  resourceCategory?: 'all' | 'sync';
+  // 값을 설정하지 않으면 기본적으로 모든 의존성을 로드합니다.
+  // 의존성을 설정하면 설정한 항목만 로드합니다.
+  depsRemote?: boolean | Array<depsPreloadArg>;
+  // 설정하지 않으면 리소스를 필터링하지 않습니다.
+  // 설정하면 불필요한 리소스를 필터링합니다.
+  filter?: (assetUrl: string) => boolean;
+};
+```
+
+</Collapse>
+
+`preloadRemote`를 사용하면 더 이른 단계에서 모듈 리소스 preload를 시작해 waterfall request를 피할 수 있습니다. `preloadRemote`는 다음을 preload할 수 있습니다.
+
+* `remote`의 `remoteEntry`
+* `remote`의 `expose`
+* `remote`의 동기 또는 비동기 리소스
+* `remote`가 의존하는 `remote` 리소스
+
+`preloadRemote`는 현재 preload 호출에 포함된 모든 리소스가 끝날 때까지 기다립니다. 모든 리소스가 성공적으로 로드되거나 캐시 hit가 발생하면 Promise가 resolve됩니다. 하나라도 실패하거나 timeout이 발생하면 Promise가 reject되고, error 객체에는 이번 preload 호출의 리소스 결과가 포함됩니다.
+
+최종 결과만 필요하다면 `await` 또는 `.then/.catch`를 바로 사용하면 됩니다.
+
+```ts
+import { preloadRemote } from '@module-federation/enhanced/runtime';
+
+try {
+  await preloadRemote([
+    {
+      nameOrAlias: 'sub1',
+      exposes: ['add'],
+      resourceCategory: 'all',
+    },
+  ]);
+
+  console.log('sub1/add preload success');
+} catch (error) {
+  console.error('sub1/add preload failed', error);
+}
+```
+
+어떤 리소스가 성공, 실패, timeout, cache hit 중 어떤 상태였는지 추적해야 한다면 error 객체의 `results`를 읽으세요.
+
+```ts
+type PreloadRemoteError = Error & {
+  results?: Array<{
+    id: string;
+    results: Array<{
+      url: string;
+      status: 'success' | 'error' | 'timeout' | 'cached';
+      resourceType: 'manifest' | 'remoteEntry' | 'js' | 'css';
+      error?: unknown;
+    }>;
+  }>;
+};
+
+preloadRemote([
+  {
+    nameOrAlias: 'sub1',
+    exposes: ['add'],
+    resourceCategory: 'all',
+  },
+]).catch((error: PreloadRemoteError) => {
+  const failedResources =
+    error.results
+      ?.flatMap((remoteResult) =>
+        remoteResult.results.map((resource) => ({
+          id: remoteResult.id,
+          ...resource,
+        })),
+      )
+      .filter(
+        (resource) =>
+          resource.status === 'error' || resource.status === 'timeout',
+      ) ?? [];
+
+  failedResources.forEach((resource) => {
+    console.error(
+      `[preloadRemote] ${resource.id} ${resource.resourceType} failed`,
+      resource.url,
+      resource.error,
+    );
+  });
+});
+```
+
+`exposes`를 지정하지 않으면 이 preload의 리소스 id는 `remoteName/*`입니다. `exposes`를 지정하면 runtime이 expose별 리소스를 생성하며, 리소스 id는 `remoteName/expose`가 됩니다.
+
+<Tabs>
+  <Tab label="빌드 플러그인 사용">
+  ```tsx
+  import { registerRemotes, preloadRemote } from '@module-federation/enhanced/runtime';
+
+  registerRemotes([
+    {
+      name: 'sub1',
+      entry: 'http://localhost:2001/mf-manifest.json',
+    },
+    {
+      name: 'sub2',
+      entry: 'http://localhost:2002/mf-manifest.json',
+    },
+    {
+      name: 'sub3',
+      entry: 'http://localhost:2003/mf-manifest.json',
+    },
+  ]);
+
+  // sub1 모듈 프리로드
+  // 리소스 이름에 ignore가 포함된 리소스 정보를 필터링합니다.
+  // sub1-button 하위 의존 모듈만 프리로드합니다.
+  preloadRemote([
+    {
+      nameOrAlias: 'sub1',
+      filter(assetUrl) {
+        return assetUrl.indexOf('ignore') === -1;
+      },
+      depsRemote: [{ nameOrAlias: 'sub1-button' }],
+    },
+  ]);
+
+  // sub2 모듈 프리로드
+  // sub2 아래의 모든 exposes를 프리로드합니다.
+  // sub2의 동기 및 비동기 리소스를 프리로드합니다.
+  preloadRemote([
+    {
+      nameOrAlias: 'sub2',
+      resourceCategory: 'all',
+    },
+  ]);
+
+  // sub3 모듈의 add expose 프리로드
+  preloadRemote([
+    {
+      nameOrAlias: 'sub3',
+      resourceCategory: 'all',
+      exposes: ['add'],
+    },
+  ]);
+  ```
+  </Tab>
+  <Tab label="Pure Runtime (빌드 플러그인 미사용)">
+  ```ts
+  import { createInstance } from '@module-federation/enhanced/runtime';
+
+  const mf = createInstance({
+    name: 'mf_host',
+    remotes: [],
+  });
+
+  mf.registerRemotes([
+    {
+      name: 'sub1',
+      entry: 'http://localhost:2001/mf-manifest.json',
+    },
+    {
+      name: 'sub2',
+      entry: 'http://localhost:2002/mf-manifest.json',
+    },
+    {
+      name: 'sub3',
+      entry: 'http://localhost:2003/mf-manifest.json',
+    },
+  ]);
+
+  // sub1 모듈 프리로드
+  // 리소스 이름에 ignore가 포함된 리소스 정보를 필터링합니다.
+  // sub1-button 하위 의존 모듈만 프리로드합니다.
+  mf.preloadRemote([
+    {
+      nameOrAlias: 'sub1',
+      filter(assetUrl) {
+        return assetUrl.indexOf('ignore') === -1;
+      },
+      depsRemote: [{ nameOrAlias: 'sub1-button' }],
+    },
+  ]);
+
+  // sub2 모듈 프리로드
+  // sub2 아래의 모든 exposes를 프리로드합니다.
+  // sub2의 동기 및 비동기 리소스를 프리로드합니다.
+  mf.preloadRemote([
+    {
+      nameOrAlias: 'sub2',
+      resourceCategory: 'all',
+    },
+  ]);
+
+  // sub3 모듈의 add expose 프리로드
+  mf.preloadRemote([
+    {
+      nameOrAlias: 'sub3',
+      resourceCategory: 'all',
+      exposes: ['add'],
+    },
+  ]);
+  ```
+  </Tab>
+</Tabs>

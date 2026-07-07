@@ -1,0 +1,16 @@
+[
+  "index",
+  "announcement",
+  "hoisted-runtime",
+  "error-load-remote",
+  {
+    "type": "file",
+    "name": "node",
+    "label": "Node.js에서 Module Federation 쉽게 사용하기"
+  },
+  {
+    "type": "file",
+    "name": "v2-stable-version",
+    "label": "MF 2.0 안정 버전 릴리스"
+  }
+]
