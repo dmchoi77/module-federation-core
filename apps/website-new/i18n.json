@@ -1,89 +1,118 @@
 {
   "languagesText": {
-    "pt-BR": "Idiomas"
+    "pt-BR": "Idiomas",
+    "ko": "언어"
   },
   "themeText": {
-    "pt-BR": "Tema"
+    "pt-BR": "Tema",
+    "ko": "테마"
   },
   "versionsText": {
-    "pt-BR": "Versões"
+    "pt-BR": "Versões",
+    "ko": "버전"
   },
   "menuTitle": {
-    "pt-BR": "Menu"
+    "pt-BR": "Menu",
+    "ko": "메뉴"
   },
   "outlineTitle": {
-    "pt-BR": "Nesta página"
+    "pt-BR": "Nesta página",
+    "ko": "이 페이지에서"
   },
   "scrollToTopText": {
-    "pt-BR": "Voltar ao topo"
+    "pt-BR": "Voltar ao topo",
+    "ko": "맨 위로"
   },
   "lastUpdatedText": {
-    "pt-BR": "Última atualização"
+    "pt-BR": "Última atualização",
+    "ko": "마지막 업데이트"
   },
   "prevPageText": {
-    "pt-BR": "Página anterior"
+    "pt-BR": "Página anterior",
+    "ko": "이전 페이지"
   },
   "nextPageText": {
-    "pt-BR": "Próxima página"
+    "pt-BR": "Próxima página",
+    "ko": "다음 페이지"
   },
   "sourceCodeText": {
-    "pt-BR": "Código-fonte"
+    "pt-BR": "Código-fonte",
+    "ko": "소스 코드"
   },
   "searchPlaceholderText": {
-    "pt-BR": "Buscar"
+    "pt-BR": "Buscar",
+    "ko": "검색"
   },
   "searchPanelCancelText": {
-    "pt-BR": "Cancelar"
+    "pt-BR": "Cancelar",
+    "ko": "취소"
   },
   "searchNoResultsText": {
-    "pt-BR": "Nenhum resultado encontrado"
+    "pt-BR": "Nenhum resultado encontrado",
+    "ko": "검색 결과가 없습니다"
   },
   "searchSuggestedQueryText": {
-    "pt-BR": "Tente buscar por palavras-chave diferentes"
+    "pt-BR": "Tente buscar por palavras-chave diferentes",
+    "ko": "다른 키워드로 검색해 보세요"
   },
   "overview.filterNameText": {
-    "pt-BR": "Filtro"
+    "pt-BR": "Filtro",
+    "ko": "필터"
   },
   "overview.filterPlaceholderText": {
-    "pt-BR": "Buscar API"
+    "pt-BR": "Buscar API",
+    "ko": "API 검색"
   },
   "overview.filterNoResultText": {
-    "pt-BR": "Nenhuma API correspondente encontrada"
+    "pt-BR": "Nenhuma API correspondente encontrada",
+    "ko": "일치하는 API를 찾을 수 없습니다"
   },
   "openInText": {
-    "pt-BR": "Abrir em {{name}}"
+    "pt-BR": "Abrir em {{name}}",
+    "ko": "{{name}}에서 열기"
   },
   "copyMarkdownText": {
-    "pt-BR": "Copiar Markdown"
+    "pt-BR": "Copiar Markdown",
+    "ko": "Markdown 복사"
   },
   "copyMarkdownLinkText": {
-    "pt-BR": "Copiar link Markdown"
+    "pt-BR": "Copiar link Markdown",
+    "ko": "Markdown 링크 복사"
   },
   "editLinkText": {
-    "pt-BR": "Editar esta página"
+    "pt-BR": "Editar esta página",
+    "ko": "이 페이지 편집"
   },
   "codeButtonGroupCopyButtonText": {
-    "pt-BR": "Copiar código"
+    "pt-BR": "Copiar código",
+    "ko": "코드 복사"
   },
   "codeButtonGroupWrapButtonText": {
-    "pt-BR": "Alternar quebra de linha"
+    "pt-BR": "Alternar quebra de linha",
+    "ko": "줄바꿈 전환"
   },
   "notFoundText": {
-    "pt-BR": "PÁGINA NÃO ENCONTRADA"
+    "pt-BR": "PÁGINA NÃO ENCONTRADA",
+    "ko": "페이지를 찾을 수 없습니다"
   },
   "takeMeHomeText": {
-    "pt-BR": "Voltar para a página inicial"
+    "pt-BR": "Voltar para a página inicial",
+    "ko": "홈으로 돌아가기"
   },
   "promptCopyText": {
-    "pt-BR": "Copiar prompt"
+    "pt-BR": "Copiar prompt",
+    "ko": "프롬프트 복사"
   },
   "promptCopiedText": {
-    "pt-BR": "Copiado"
+    "pt-BR": "Copiado",
+    "ko": "복사됨"
   },
   "promptExpandText": {
-    "pt-BR": "Expandir"
+    "pt-BR": "Expandir",
+    "ko": "펼치기"
   },
   "promptCollapseText": {
-    "pt-BR": "Recolher"
+    "pt-BR": "Recolher",
+    "ko": "접기"
   }
 }

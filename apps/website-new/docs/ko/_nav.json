@@ -1,0 +1,118 @@
+[
+  {
+    "text": "AI",
+    "link": "/ai/",
+    "activeMatch": "/ai/"
+  },
+  {
+    "text": "가이드",
+    "link": "/guide/start/",
+    "activeMatch": "/guide/"
+  },
+  {
+    "text": "통합",
+    "link": "/integrations/",
+    "activeMatch": "/integrations/",
+    "items": [
+      {
+        "text": "개요",
+        "link": "/integrations/"
+      },
+      {
+        "text": "Rsbuild",
+        "link": "/integrations/build-tool/rsbuild"
+      },
+      {
+        "text": "Rslib",
+        "link": "/integrations/build-tool/rslib"
+      },
+      {
+        "text": "Vite",
+        "link": "/integrations/build-tool/vite"
+      },
+      {
+        "text": "Rspack",
+        "link": "/integrations/bundler/rspack"
+      },
+      {
+        "text": "Webpack",
+        "link": "/integrations/bundler/webpack"
+      },
+      {
+        "text": "Metro",
+        "link": "/integrations/bundler/metro"
+      },
+      {
+        "text": "Rspress",
+        "link": "/integrations/documentation/rspress"
+      },
+      {
+        "text": "Modern.js",
+        "link": "/integrations/framework/modernjs"
+      },
+      {
+        "text": "Next.js",
+        "link": "/integrations/framework/nextjs"
+      },
+      {
+        "text": "Angular",
+        "link": "/integrations/framework/angular"
+      },
+      {
+        "text": "모노레포",
+        "link": "/integrations/framework/monorepos"
+      },
+      {
+        "text": "실습",
+        "link": "/integrations/practice"
+      }
+    ]
+  },
+  {
+    "text": "설정",
+    "link": "/configure/",
+    "activeMatch": "/configure/"
+  },
+  {
+    "text": "플러그인",
+    "link": "/plugin/dev/index",
+    "activeMatch": "/plugin/"
+  },
+  {
+    "text": "쇼케이스",
+    "link": "/showcase/index",
+    "activeMatch": "/showcase/"
+  },
+  {
+    "text": "블로그",
+    "link": "/blog/index",
+    "activeMatch": "/blog/"
+  },
+  {
+    "text": "생태계",
+    "activeMatch": "/ecosystem/",
+    "items": [
+      {
+        "text": "Module Federation 예제",
+        "link": "https://github.com/module-federation/module-federation-examples"
+      },
+      {
+        "text": "Practical Module Federation",
+        "link": "https://module-federation.myshopify.com/products/practical-module-federation"
+      },
+      {
+        "text": "Zephyr Cloud",
+        "link": "https://zephyr-cloud.io/"
+      },
+      {
+        "text": "Nx",
+        "link": "https://nx.dev/"
+      }
+    ]
+  },
+  {
+    "text": "플레이그라운드",
+    "link": "/playground/",
+    "activeMatch": "/playground/"
+  }
+]
